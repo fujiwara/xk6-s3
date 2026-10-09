@@ -186,7 +186,7 @@ Computing signatures and checksums uses the load generator's CPU. Monitor the CP
 
 ## Examples
 
-[examples/](examples/) has benchmarks comparable to the [warp](https://github.com/minio/warp) benchmarks `put`, `get`, `mixed` and `multipart-put`. They are configured by environment variables (see [examples/common.js](examples/common.js)).
+[examples/](examples/) has benchmarks comparable to the [warp](https://github.com/minio/warp) benchmarks `put`, `get`, `mixed`, `multipart-put`, `stat`, `list` and `delete`. They are configured by environment variables (see [examples/common.js](examples/common.js)).
 
 | Script | Description | Defaults |
 | --- | --- | --- |
@@ -194,6 +194,9 @@ Computing signatures and checksums uses the load generator's CPU. Monitor the CP
 | [get.js](examples/get.js) | Download random objects preloaded in `setup()` | 20 VUs, 2500 objects of 10MiB |
 | [mixed.js](examples/mixed.js) | GET, HEAD, PUT and DELETE with weights 45:30:15:10 | 20 VUs, 2500 objects of 10MiB |
 | [multipart.js](examples/multipart.js) | Upload objects with multipart uploads (like `warp multipart-put`) | 4 VUs, 100MiB in 5MiB parts, 5 parts at a time (the aws-sdk-go-v2 upload manager defaults) |
+| [stat.js](examples/stat.js) | HeadObject on random objects preloaded in `setup()` | 20 VUs, 10000 objects of 1KiB |
+| [list.js](examples/list.js) | List all objects under a prefix per VU with ListObjectsV2 | 20 VUs, 10000 objects of 1KiB |
+| [delete.js](examples/delete.js) | Delete objects preloaded in `setup()` one by one. Unlike warp, which uses DeleteObjects in batches of 100 | 20 VUs, 25000 objects of 1KiB |
 
 ```console
 $ AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
@@ -214,7 +217,7 @@ Compared with [warp](https://github.com/minio/warp), xk6-s3 lets you write the w
 - k6 outputs (OpenTelemetry, Prometheus, JSON, ...) and `k6/http` in the same test
 - Object size distributions and the request format of the clients to reproduce
 
-The standard warp benchmarks `put`, `get`, `mixed` and `multipart-put` are available as [examples](#examples).
+The standard warp benchmarks `put`, `get`, `mixed`, `multipart-put`, `stat`, `list` and `delete` are available as [examples](#examples).
 
 There is no practical difference in measuring server performance. In a comparison against versitygw on the same machine, with the same request format and keep-alive connections, the latency measured by xk6-s3 was within about 0.1ms per request of warp, which is the processing cost of aws-sdk-go-v2 compared with minio-go. Note the following when comparing the numbers with other tools:
 
