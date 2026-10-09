@@ -86,7 +86,7 @@ S3エラー・ネットワークエラーでは例外を投げず、結果オブ
 
 | 項目 | 既定値 | 説明 |
 | --- | --- | --- |
-| `endpoint` | (必須) | 接続先URL |
+| `endpoint` | 環境変数 `AWS_ENDPOINT_URL_S3`、なければ `AWS_ENDPOINT_URL` | 接続先URL。AWS SDKと同じ優先順位で環境変数から補う。どちらもなければエラー |
 | `region` | `us-east-1` | 署名用リージョン |
 | `accessKey` / `secretKey` / `sessionToken` | 環境変数 `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` | 静的認証情報 |
 | `pathStyle` | `true` | パススタイル/仮想ホストスタイルの切り替え |

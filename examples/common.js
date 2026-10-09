@@ -1,6 +1,6 @@
 // Shared settings of the examples. All values can be set by environment variables.
 //
-//   S3_ENDPOINT   endpoint URL (default: http://localhost:7070)
+//   AWS_ENDPOINT_URL_S3  endpoint URL (or AWS_ENDPOINT_URL)
 //   S3_REGION     region (default: us-east-1)
 //   S3_BUCKET     bucket, created in setup() if missing (default: xk6-s3)
 //   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY  credentials
@@ -15,7 +15,6 @@ import s3 from "k6/x/s3";
 export const bucket = __ENV.S3_BUCKET || "xk6-s3";
 
 export const client = new s3.Client({
-  endpoint: __ENV.S3_ENDPOINT || "http://localhost:7070",
   region: __ENV.S3_REGION || "us-east-1",
   checksum: __ENV.S3_CHECKSUM || "when_supported",
   payloadSigning: __ENV.S3_PAYLOAD_SIGNING || "auto",

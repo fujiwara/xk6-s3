@@ -39,6 +39,7 @@ import { check } from "k6";
 
 const client = new s3.Client({
   endpoint: "http://localhost:7070",
+  // endpoint defaults to AWS_ENDPOINT_URL_S3 or AWS_ENDPOINT_URL
   // accessKey / secretKey default to AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
 });
 
@@ -65,7 +66,7 @@ Create clients in the init context. The configuration is validated there, and th
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `endpoint` | (required) | Endpoint URL (`http://` or `https://`) |
+| `endpoint` | `AWS_ENDPOINT_URL_S3`, then `AWS_ENDPOINT_URL` | Endpoint URL (`http://` or `https://`). Required unless set by the environment variables |
 | `region` | `us-east-1` | Region for signing |
 | `accessKey` / `secretKey` / `sessionToken` | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` | Static credentials |
 | `pathStyle` | `true` | Use path-style addressing |
@@ -76,7 +77,7 @@ Create clients in the init context. The configuration is validated there, and th
 | `maxAttempts` | `1` | Maximum attempts including SDK retries. Retries are disabled by default |
 | `tags` | `[]` | Optional metric tags to enable: `bucket`, `size_class` |
 
-Unknown keys are rejected.
+Unknown keys are rejected. The default values from environment variables are read from the environment of the k6 process, not from `-e` / `__ENV`.
 
 ### Operations
 
@@ -195,7 +196,7 @@ Computing signatures and checksums uses the load generator's CPU. Monitor the CP
 
 ```console
 $ AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
-    S3_ENDPOINT=http://localhost:7070 VUS=32 DURATION=5m SIZE=1MiB \
+    AWS_ENDPOINT_URL_S3=http://localhost:7070 VUS=32 DURATION=5m SIZE=1MiB \
     ./k6 run examples/get.js
 ```
 

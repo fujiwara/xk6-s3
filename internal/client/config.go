@@ -69,7 +69,8 @@ var configKeys = []string{
 }
 
 // ParseConfig validates a configuration object exported from JavaScript and
-// fills in the defaults. lookupEnv is used for the default credentials.
+// fills in the defaults. lookupEnv is used for the default endpoint and
+// credentials.
 func ParseConfig(m map[string]any, lookupEnv func(string) (string, bool)) (Config, error) {
 	cfg := Config{
 		Region:         "us-east-1",
@@ -148,7 +149,16 @@ func ParseConfig(m map[string]any, lookupEnv func(string) (string, bool)) (Confi
 	}
 
 	if cfg.Endpoint == "" {
-		errs = append(errs, errors.New("endpoint is required"))
+		// The same precedence as the AWS SDKs: the service-specific variable first.
+		for _, name := range []string{"AWS_ENDPOINT_URL_S3", "AWS_ENDPOINT_URL"} {
+			if v, ok := lookupEnv(name); ok && v != "" {
+				cfg.Endpoint = v
+				break
+			}
+		}
+	}
+	if cfg.Endpoint == "" {
+		errs = append(errs, errors.New("endpoint is required (or set AWS_ENDPOINT_URL_S3 or AWS_ENDPOINT_URL)"))
 	} else if u, err := url.Parse(cfg.Endpoint); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		errs = append(errs, fmt.Errorf("endpoint must be an http or https URL: %q", cfg.Endpoint))
 	}

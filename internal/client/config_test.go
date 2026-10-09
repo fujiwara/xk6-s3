@@ -1,6 +1,7 @@
 package client
 
 import (
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -98,6 +99,44 @@ func TestParseConfigCredentialsFromEnv(t *testing.T) {
 	}
 	if cfg.AccessKey != "a" || cfg.SecretKey != "s" || cfg.SessionToken != "" {
 		t.Errorf("explicit credentials were overridden: %+v", cfg)
+	}
+}
+
+func TestParseConfigEndpointFromEnv(t *testing.T) {
+	base := map[string]any{"accessKey": "a", "secretKey": "s"}
+	tests := []struct {
+		env  map[string]string
+		cfg  map[string]any
+		want string
+	}{
+		{map[string]string{"AWS_ENDPOINT_URL_S3": "http://s3:7070"}, nil, "http://s3:7070"},
+		{map[string]string{"AWS_ENDPOINT_URL": "http://all:7070"}, nil, "http://all:7070"},
+		{map[string]string{"AWS_ENDPOINT_URL_S3": "http://s3:7070", "AWS_ENDPOINT_URL": "http://all:7070"}, nil, "http://s3:7070"},
+		{map[string]string{"AWS_ENDPOINT_URL_S3": "", "AWS_ENDPOINT_URL": "http://all:7070"}, nil, "http://all:7070"},
+		{map[string]string{"AWS_ENDPOINT_URL_S3": "http://s3:7070"}, map[string]any{"endpoint": "http://explicit:7070"}, "http://explicit:7070"},
+	}
+	for _, tt := range tests {
+		m := maps.Clone(base)
+		maps.Copy(m, tt.cfg)
+		cfg, err := ParseConfig(m, func(k string) (string, bool) { v, ok := tt.env[k]; return v, ok })
+		if err != nil {
+			t.Errorf("env %v: %v", tt.env, err)
+			continue
+		}
+		if cfg.Endpoint != tt.want {
+			t.Errorf("env %v, config %v: Endpoint = %q, want %q", tt.env, tt.cfg, cfg.Endpoint, tt.want)
+		}
+	}
+
+	// The endpoint from the environment is validated too.
+	_, err := ParseConfig(maps.Clone(base), func(k string) (string, bool) {
+		if k == "AWS_ENDPOINT_URL_S3" {
+			return "localhost:7070", true
+		}
+		return "", false
+	})
+	if err == nil || !strings.Contains(err.Error(), "endpoint must be") {
+		t.Errorf("error = %v", err)
 	}
 }
 
