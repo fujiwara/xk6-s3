@@ -1,4 +1,4 @@
-// Multipart upload benchmark, comparable to `warp multipart`.
+// Multipart upload benchmark, comparable to `warp multipart-put`.
 // Each VU uploads objects of SIZE (default: 100MiB) with multipart uploads
 // of PART_SIZE (default: 5MiB) parts, PART_CONCURRENCY (default: 5) parts at
 // a time, as the aws-sdk-go-v2 upload manager does.

@@ -186,14 +186,14 @@ Computing signatures and checksums uses the load generator's CPU. Monitor the CP
 
 ## Examples
 
-[examples/](examples/) has benchmarks comparable to the [warp](https://github.com/minio/warp) benchmarks of the same names. They are configured by environment variables (see [examples/common.js](examples/common.js)).
+[examples/](examples/) has benchmarks comparable to the [warp](https://github.com/minio/warp) benchmarks `put`, `get`, `mixed` and `multipart-put`. They are configured by environment variables (see [examples/common.js](examples/common.js)).
 
 | Script | Description | Defaults |
 | --- | --- | --- |
 | [put.js](examples/put.js) | Upload objects with PutObject | 20 VUs, 10MiB |
 | [get.js](examples/get.js) | Download random objects preloaded in `setup()` | 20 VUs, 2500 objects of 10MiB |
 | [mixed.js](examples/mixed.js) | GET, HEAD, PUT and DELETE with weights 45:30:15:10 | 20 VUs, 2500 objects of 10MiB |
-| [multipart.js](examples/multipart.js) | Upload objects with multipart uploads | 4 VUs, 100MiB in 5MiB parts, 5 parts at a time |
+| [multipart.js](examples/multipart.js) | Upload objects with multipart uploads (like `warp multipart-put`) | 4 VUs, 100MiB in 5MiB parts, 5 parts at a time (the aws-sdk-go-v2 upload manager defaults) |
 
 ```console
 $ AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
@@ -205,36 +205,22 @@ The examples create the bucket if missing and delete the objects of the run in `
 
 ## Comparison with warp
 
-For measuring the performance of an S3-compatible server, there is no practical difference between xk6-s3 and [warp](https://github.com/minio/warp). With the same request format and connection handling, both tools report the same latency and throughput within the client-side overhead described below, which is small compared to the server time and cancels out when servers are compared with the same tool.
+Compared with [warp](https://github.com/minio/warp), xk6-s3 lets you write the workload as a k6 script:
 
-### Measurement
+- Sequences and logic of a real application, such as reading an object several times after uploading it, or listing before reading
+- Multiple workloads at once with k6 scenarios, such as measuring GET latency while large uploads run in the background
+- Any k6 executor, such as `ramping-vus`, `constant-arrival-rate` or `ramping-arrival-rate`
+- Pass/fail criteria with thresholds, for use in CI
+- k6 outputs (OpenTelemetry, Prometheus, JSON, ...) and `k6/http` in the same test
+- Object size distributions and the request format of the clients to reproduce
 
-- Server: versitygw v1.8.0 (posix backend on tmpfs, `--keep-alive`, host network, default request logging), pinned to CPUs 0-7 of a 16-CPU machine
-- Clients: warp v1.8.2 (minio-go v7.0.98) and xk6-s3 on k6 v2.3.0, pinned to CPUs 8-15
-- HTTPS, 4 concurrent clients (`--concurrent 4` / 4 VUs), PUT and GET of 64KiB and 1MiB objects
-- The load had headroom: the server used about 3 of its 8 CPUs and the client at most about 2 CPUs
-- xk6-s3 used `checksum: when_required`, which sends the same requests as warp (`UNSIGNED-PAYLOAD`, no checksum). This was verified by recording the requests of both tools
-- warp and xk6-s3 were run alternately, three times each. The per-request raw data of both tools (`warp --full`, `k6 --out csv`) was analyzed with the same script over the same steady-state window
+The standard warp benchmarks `put`, `get`, `mixed` and `multipart-put` are available as [examples](#examples).
 
-| Operation | p50 latency (xk6-s3 / warp) | Mean latency difference | Throughput difference |
-| --- | --- | --- | --- |
-| GET 1MiB | 4.51ms / 4.41ms | +0.12ms | -4.0% |
-| PUT 1MiB | 4.24ms / 4.06ms | +0.15ms | -4.9% |
-| GET 64KiB | 0.75ms / 0.69ms | +0.08ms | -14.6% |
-| PUT 64KiB | 0.89ms / 0.81ms | +0.07ms | -12.1% |
+There is no practical difference in measuring server performance. In a comparison against versitygw on the same machine, with the same request format and keep-alive connections, the latency measured by xk6-s3 was within about 0.1ms per request of warp, which is the processing cost of aws-sdk-go-v2 compared with minio-go. Note the following when comparing the numbers with other tools:
 
-The differences come from the client side:
-
-- Latency: about 0.07-0.15ms per request, the processing cost of aws-sdk-go-v2 compared with minio-go. Plain aws-sdk-go-v2 without k6 showed the same or higher latency than xk6-s3 (checked with 64KiB objects), so k6 does not add latency to `s3_op_duration`.
-- Throughput: with a fixed number of VUs and spare server capacity, throughput is the number of VUs divided by the time per iteration, so the client overhead and the k6 iteration overhead (about 0.05-0.09ms between operations) lower it for small objects. This does not reflect the server; add VUs, or use the `constant-arrival-rate` executor to fix the request rate.
-
-The relative differences above are large for small objects only because the server responds in less than a millisecond on localhost. With network latency of a few milliseconds or more, the offset is within the noise. The behavior when the server is saturated was not compared, because localhost does not provide stable conditions for it.
-
-### Notes for fair comparisons
-
-- **Request format**: the `checksum` and `payloadSigning` options change the work of the server (see [Request format](#request-format)). Match them when comparing with other tools.
-- **Servers that close connections**: versitygw disables keep-alive by default and closes the connection after every response. Then every request needs a new TLS handshake. warp resumes TLS sessions with a session cache in its HTTP transport, while k6 (and the default HTTP transport of aws-sdk-go-v2) performs a full handshake each time. In our measurement this made xk6-s3 about 1.2ms slower per request and put more TLS work on the server. Run versitygw with `--keep-alive` (or `VGW_KEEP_ALIVE=true`) when comparing. Note that xk6-s3 is closer to real aws-sdk-go-v2 clients in this respect.
-- **Docker port forwarding**: `docker run -p` relays traffic through docker-proxy, which added about 0.25ms per request in our measurement and competes for CPU with the clients. Use host networking for benchmarks on a single machine.
+- The `checksum` and `payloadSigning` options change the work of the server (see [Request format](#request-format)). warp sends the same requests as `checksum: when_required` over HTTPS.
+- Against a server that closes the connection after every response, such as versitygw without `--keep-alive`, warp resumes TLS sessions while k6 performs a full TLS handshake for every request, as the default aws-sdk-go-v2 client does. Enable keep-alive on the server for comparisons.
+- With a fixed number of VUs, the k6 iteration overhead (less than 0.1ms) slightly lowers the throughput of small objects when the server is not saturated. Add VUs, or use `constant-arrival-rate`.
 
 ## Development
 
