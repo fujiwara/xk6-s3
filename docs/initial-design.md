@@ -81,20 +81,22 @@ S3エラー・ネットワークエラーでは例外を投げず、結果オブ
 | --- | --- | --- |
 | `endpoint` | (必須) | 接続先URL |
 | `region` | `us-east-1` | 署名用リージョン |
-| `accessKey` / `secretKey` | 環境変数 `AWS_*` | 静的認証情報 |
+| `accessKey` / `secretKey` / `sessionToken` | 環境変数 `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` | 静的認証情報 |
 | `pathStyle` | `true` | パススタイル/仮想ホストスタイルの切り替え |
 | `checksum` | `when_supported` | `when_supported`(SDK既定) / `when_required`。送信方式参照 |
-| `checksumAlgorithm` | `CRC32` | `CRC32`(SDK既定) / `CRC32C` / `CRC64NVME` / `SHA1` / `SHA256` |
+| `checksumAlgorithm` | (未指定) | `CRC32` / `CRC32C` / `CRC64NVME` / `SHA1` / `SHA256`。未指定時はSDK既定(CRC32)。`when_required` とは併用できない |
 | `payloadSigning` | `auto` | `auto`(SDK既定) / `unsigned` / `signed`。送信方式参照 |
-| `timeout` | `60s` | 1操作あたりのタイムアウト |
+| `timeout` | `60s` | 1操作あたりのタイムアウト。期間文字列またはミリ秒の数値(k6の慣例に従う) |
 | `maxAttempts` | `1` | SDKのリトライ回数。既定でリトライなし |
-| `tags` | `[]` | 任意タグの有効化(メトリクス設計参照) |
+| `tags` | `[]` | 任意タグの有効化。`bucket` / `size_class`(メトリクス設計参照) |
+
+未知のキーはタイプミスを防ぐためエラーとする。
 
 ### 送信方式(署名・チェックサム)
 
 PUTとUploadPartでは、署名とチェックサムの設定によってリクエストの形そのものが変わる。ボディ全体のSHA256で署名するか、`aws-chunked` でボディを送りチェックサムを末尾(trailer)に付けるかで、サーバ側の受信処理と署名検証の処理が異なる。そのためこの設定は、負荷生成側のCPUを節約するための調整ではなく、想定する実クライアントの送信方式を再現するためのものとして扱う。既定値は、現行のaws-sdk-go-v2(および同世代のAWS SDK・AWS CLI)の既定の挙動に合わせる。
 
-aws-sdk-go-v2の既定(`payloadSigning: auto`)で、PutObject / UploadPart は次の形式で送られる。
+aws-sdk-go-v2の既定(`payloadSigning: auto`)で、PutObject / UploadPart は次の形式で送られる(`internal/client` のテストで確認済み)。
 
 | スキーム | `checksum` | `x-amz-content-sha256` | ボディ | チェックサム |
 | --- | --- | --- | --- | --- |
@@ -103,9 +105,19 @@ aws-sdk-go-v2の既定(`payloadSigning: auto`)で、PutObject / UploadPart は�
 | HTTP | `when_supported` | ボディ全体のSHA256 | そのまま | 送信前に計算してヘッダに付与 |
 | HTTP | `when_required` | ボディ全体のSHA256 | そのまま | なし |
 
-`payloadSigning` の `unsigned` / `signed` は、スキームによる切り替えを上書きして `UNSIGNED-PAYLOAD` またはボディ全体のSHA256に固定する。古いSDKや他言語のクライアントの送り方に合わせたい場合に使う。trailerつきのチェックサムはSDKの制約によりHTTPSでのみ使われる。HTTPでのチャンク署名方式(`STREAMING-AWS4-HMAC-SHA256-PAYLOAD`、Java SDKやminio-goなどが使う)はaws-sdk-go-v2が対応していないため、初版では再現しない。
+`payloadSigning` の `unsigned` / `signed` は、スキームによる切り替えを上書きする。古いSDKや他言語のクライアントの送り方に合わせたい場合に使う。上書き時の形式は次のとおり。
 
-各組み合わせで実際に送られるヘッダとボディの形式は、リクエストを記録するテストサーバに対するテストで確認し、READMEに表として載せる。examplesでは想定するクライアントを明記し、それに合わせた設定を書く。
+| スキーム | `checksum` | `payloadSigning` | `x-amz-content-sha256` | ボディ | チェックサム |
+| --- | --- | --- | --- | --- | --- |
+| HTTPS | `when_supported` | `unsigned` | `STREAMING-UNSIGNED-PAYLOAD-TRAILER` | `aws-chunked` | trailer(既定と同じ) |
+| HTTPS | `when_supported` | `signed` | ボディ全体のSHA256 | そのまま | 送信前に計算してヘッダに付与 |
+| HTTPS | `when_required` | `signed` | ボディ全体のSHA256 | そのまま | なし |
+| HTTP | `when_supported` | `unsigned` | `UNSIGNED-PAYLOAD` | そのまま | 送信前に計算してヘッダに付与 |
+| HTTP | `when_required` | `unsigned` | `UNSIGNED-PAYLOAD` | そのまま | なし |
+
+上書きはSDKのチェックサム処理より前に置いた独自のミドルウェアで行い、署名に使うペイロードハッシュをコンテキストに設定する。trailerつきのチェックサムはボディ全体のSHA256による署名と組み合わせられないため、`signed` ではチェックサムを拡張側で計算してヘッダに付け、SDKのtrailer処理を抑止する。trailerつきのチェックサムはSDKの制約によりHTTPSでのみ使われる。HTTPでのチャンク署名方式(`STREAMING-AWS4-HMAC-SHA256-PAYLOAD`、Java SDKやminio-goなどが使う)はaws-sdk-go-v2が対応していないため、初版では再現しない。
+
+各組み合わせのヘッダとボディの形式は、リクエストを記録するテストサーバに対するテストで検証し、READMEにも表として載せる。examplesでは想定するクライアントを明記し、それに合わせた設定を書く。
 
 `checksum` はレスポンス側(`ResponseChecksumValidation`)にも適用し、GETのチェックサム検証もSDKの既定の挙動に従う。`aws-chunked` やtrailerつきのチェックサムに対応していないS3互換実装では、既定値のままだとPUTが失敗する。これはその実装の互換性の問題として結果に出すべきもので、拡張側で既定値を変えて隠すことはしない。古いクライアントを想定する場合は `when_required` を指定する。
 
@@ -159,10 +171,13 @@ SDKが返すエラーを次の `error_kind` に分類し、結果オブジェク
 | error\_kind | 判定 | error\_code |
 | --- | --- | --- |
 | `s3` | S3のエラーレスポンス(APIエラー)を解析できた | `SlowDown`、`NoSuchKey` などのS3エラーコード |
-| `http` | HTTPエラーだがS3エラーコードを解析できない | 空 |
+| `http` | HTTPエラーだがS3エラーコードを解析できない(ボディのないHEADの404などを含む) | 空 |
 | `timeout` | 操作タイムアウト、ネットワークタイムアウト | 空 |
 | `network` | 接続拒否・リセット、DNS、TLSの失敗 | 空 |
 | `canceled` | テスト終了によるVUコンテキストのキャンセル | 空 |
+| `other` | 上記のいずれにも当たらない(SDK内部のエラーなど) | 空 |
+
+SDKはエラーボディを解析できないとき、HTTPステータスの文言からエラーコードを合成する(`NotFound`、`BadGateway` など)。合成されたコードと一致するものは `http` に分類する。このため、ステータス文言と同名のS3エラーコード(`ServiceUnavailable`、`NotImplemented` など)を実際に返された場合も `http` に分類されるが、`status` タグで区別できる。
 
 `canceled` はテスト終了時の打ち切りで発生するため、計測値として扱わない。`s3_op_duration`、`s3_op_ttfb`、`s3_op_bytes`、`s3_op_errors`、`s3_errors` のいずれのサンプルも送出せず、結果オブジェクトで `errorKind: "canceled"` を返すだけとする。途中で打ち切られた操作の所要時間やバイト数が分布に混ざるのを避けるためである。エラー時は `requestId` を付けて警告ログを出すが、ログが負荷要因にならないよう操作種別ごとに先頭の数件に限る。
 
