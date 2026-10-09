@@ -151,6 +151,18 @@ All metrics are tagged with `op` (`put`, `get`, `head`, `delete`, `list`, `creat
 
 `data_sent` / `data_received` are emitted by k6 at the end of each iteration. Use `s3_op_bytes` for throughput over time.
 
+### OpenTelemetry output
+
+With `-o opentelemetry`, Trend metrics (`s3_op_duration`, `s3_op_ttfb`) are exported as histograms. By default they use the OpenTelemetry SDK default bucket boundaries (0, 5, 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000 ms), which are too coarse for low-latency operations. If your backend supports exponential histograms, enable them with the standard OpenTelemetry environment variable:
+
+```console
+$ OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION=base2_exponential_bucket_histogram \
+    K6_OTEL_EXPORTER_PROTOCOL=http/protobuf K6_OTEL_HTTP_EXPORTER_ENDPOINT=localhost:4318 \
+    ./k6 run -o opentelemetry script.js
+```
+
+The Rate metric `s3_op_errors` is exported as counters by k6 (e.g. `s3_op_errors.total`).
+
 ## Request format
 
 The `checksum` and `payloadSigning` options change how PutObject and UploadPart requests are sent, which also changes how the server receives and verifies them. Choose them to reproduce the clients you expect, not to reduce the load generator's CPU usage. The defaults reproduce the current aws-sdk-go-v2 defaults.

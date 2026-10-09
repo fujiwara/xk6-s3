@@ -169,7 +169,7 @@ k6組み込みメトリクスと自前メトリクスを併用する。SDKのHTT
 - 設定で有効化: `bucket`、`size_class`(`<4KiB`、`<64KiB`、`<1MiB`、`<16MiB`、`<128MiB`、`>=128MiB` の6区分)
 - 付与しない: キー名、リクエストID(カーディナリティ爆発の防止)
 
-OTel出力ではTrendがHistogramに変換されるため、バックエンド側のバケット境界がS3のレイテンシ分布に合うか、初回に確認する。
+OTel出力ではTrendがHistogramに変換される。k6はバケット境界を指定しないため、OTel SDKの既定の境界(0, 5, 10, 25, … 10000 ms)になり、低レイテンシの操作では分解能が足りない(ローカルのversitygwではHEADがすべて0〜5msのバケットに入った)。OTel標準の環境変数 `OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION=base2_exponential_bucket_histogram` で指数ヒストグラムに切り替えられることを確認したため、バックエンドが対応していればこれを推奨し、READMEに記載する。RateはOTel出力ではカウンタ(`s3_op_errors.total` など)に変換される。
 
 ## エラー処理
 
