@@ -67,6 +67,7 @@ for endpoint in "http://127.0.0.1:$HTTP_PORT" "https://127.0.0.1:$HTTPS_PORT"; d
   run --insecure-skip-tls-verify examples/stat.js
   OBJECTS=200 run --insecure-skip-tls-verify examples/list.js
   OBJECTS=200 run --insecure-skip-tls-verify examples/delete.js
+  UPLOAD_VUS=2 UPLOAD_SIZE=12MiB READ_RATE=50 HOT_OBJECTS=50 run --insecure-skip-tls-verify examples/slo.js
 done
 
 echo "=== all E2E tests passed"

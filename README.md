@@ -1,11 +1,75 @@
 # xk6-s3
 
-A [k6](https://github.com/grafana/k6) extension for load testing S3-compatible object storage.
+Load test S3-compatible object storage with [k6](https://github.com/grafana/k6) scenarios, with server measurements on par with [warp](https://github.com/minio/warp).
 
-xk6-s3 is a thin wrapper around [aws-sdk-go-v2](https://github.com/aws/aws-sdk-go-v2). Object bodies are generated and discarded on the Go side, so the load generator does not spend CPU and memory on large payloads in JavaScript. Results are recorded as k6 metrics, so thresholds, the end-of-test summary, and outputs such as `-o opentelemetry` work as usual.
+## Why xk6-s3
+
+- **Write the workload, not just pick a benchmark.** Express the access patterns of your application as a k6 script: multiple workloads at once, any executor (`ramping-vus`, `constant-arrival-rate`, ...), and pass/fail thresholds for CI. For example, check that small reads keep their p99 latency while large uploads run in the background.
+- **Server numbers on par with warp.** With the same request format, the latency measured by xk6-s3 is within about 0.1ms per request of warp ([details](#comparison-with-warp)). The standard warp benchmarks `put`, `get`, `mixed`, `multipart-put`, `stat`, `list` and `delete` are ready as [examples](#examples).
+- **Send what real clients send.** By default, requests have the same format as the current AWS SDKs (for example, `aws-chunked` uploads with trailing checksums over HTTPS), and can be switched to the formats of other clients. Signature and checksum handling of the server is exercised as in production, and compatibility issues surface as errors. All formats are tested against a real S3-compatible server.
+- **Large objects without a heavy load generator.** Object bodies are generated and discarded on the Go side, not in JavaScript, so large objects do not consume the CPU and memory of the load generator.
+- **The k6 ecosystem.** Metrics go to the end-of-test summary, thresholds and k6 outputs (OpenTelemetry, Prometheus, JSON, ...). S3 tests can be combined with `k6/http` in the same script.
+
+## Quick start
+
+Build a k6 binary with this extension (requires Go) and run an example against your storage:
+
+```console
+$ git clone https://github.com/fujiwara/xk6-s3.git && cd xk6-s3
+$ make build
+$ export AWS_ENDPOINT_URL_S3=http://localhost:7070 AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
+$ VUS=32 DURATION=1m SIZE=1MiB OBJECTS=1000 ./k6 run examples/get.js
+```
+
+The examples create the bucket `xk6-s3` if missing and delete the objects they upload. See [Build](#build) for other ways to build.
 
 > [!WARNING]
-> This extension is under initial development. The JavaScript API is not stable until v1.0. See [docs/initial-design.md](docs/initial-design.md) for the planned design.
+> This extension is under initial development. The JavaScript API may change until v1.0.
+
+## Write your own scenario
+
+Does the p99 latency of small reads stay under 50ms while large multipart uploads run in the background? With k6 scenarios and thresholds:
+
+```js
+import s3 from "k6/x/s3";
+
+const client = new s3.Client({}); // AWS_ENDPOINT_URL_S3, AWS_ACCESS_KEY_ID, ... from the environment
+const hot = `${s3.runId()}/hot/`;
+
+export const options = {
+  scenarios: {
+    // large uploads in the background
+    uploads: { executor: "constant-vus", vus: 8, duration: "5m", exec: "upload" },
+    // small reads at a fixed rate
+    reads: {
+      executor: "constant-arrival-rate", rate: 500, timeUnit: "1s",
+      duration: "5m", preAllocatedVUs: 50, exec: "read",
+    },
+  },
+  thresholds: {
+    "s3_op_duration{scenario:reads}": ["p(99)<50"],
+    "s3_op_errors{scenario:reads}": ["rate<0.001"],
+  },
+};
+
+export function setup() {
+  client.preload("bucket", hot, 1000, "64KiB");
+}
+
+export function upload() {
+  client.putObjectMultipart("bucket", `${s3.runId()}/bulk/${__VU}-${__ITER}`, "256MiB");
+}
+
+export function read() {
+  client.getObject("bucket", `${hot}${Math.floor(Math.random() * 1000)}`);
+}
+
+export function teardown() {
+  client.deletePrefix("bucket", `${s3.runId()}/`);
+}
+```
+
+k6 exits with a non-zero status when a threshold fails. A runnable version is [examples/slo.js](examples/slo.js).
 
 ## Build
 
@@ -188,7 +252,7 @@ Computing signatures and checksums uses the load generator's CPU. Monitor the CP
 
 ## Examples
 
-[examples/](examples/) has benchmarks comparable to the [warp](https://github.com/minio/warp) benchmarks `put`, `get`, `mixed`, `multipart-put`, `stat`, `list` and `delete`. They are configured by environment variables (see [examples/common.js](examples/common.js)).
+[examples/](examples/) has benchmarks comparable to the [warp](https://github.com/minio/warp) benchmarks `put`, `get`, `mixed`, `multipart-put`, `stat`, `list` and `delete`, and a scenario that warp cannot express. They are configured by environment variables (see [examples/common.js](examples/common.js) and each script).
 
 | Script | Description | Defaults |
 | --- | --- | --- |
@@ -199,6 +263,7 @@ Computing signatures and checksums uses the load generator's CPU. Monitor the CP
 | [stat.js](examples/stat.js) | HeadObject on random objects preloaded in `setup()` | 20 VUs, 10000 objects of 1KiB |
 | [list.js](examples/list.js) | List all objects under a prefix per VU with ListObjectsV2 | 20 VUs, 10000 objects of 1KiB |
 | [delete.js](examples/delete.js) | Delete objects preloaded in `setup()` with DeleteObjects | 20 VUs, 25000 objects of 1KiB, 100 objects per request |
+| [slo.js](examples/slo.js) | Small reads at a fixed rate with large multipart uploads in the background, with a p99 latency threshold | 500 reads/s of 64KiB, 8 VUs uploading 256MiB |
 
 ```console
 $ AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
@@ -209,17 +274,6 @@ $ AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
 The examples create the bucket if missing and delete the objects of the run in `teardown()`. Operations in `setup()` and `teardown()` are also recorded, so the thresholds are filtered by the `scenario` tag.
 
 ## Comparison with warp
-
-Compared with [warp](https://github.com/minio/warp), xk6-s3 lets you write the workload as a k6 script:
-
-- Sequences and logic of a real application, such as reading an object several times after uploading it, or listing before reading
-- Multiple workloads at once with k6 scenarios, such as measuring GET latency while large uploads run in the background
-- Any k6 executor, such as `ramping-vus`, `constant-arrival-rate` or `ramping-arrival-rate`
-- Pass/fail criteria with thresholds, for use in CI
-- k6 outputs (OpenTelemetry, Prometheus, JSON, ...) and `k6/http` in the same test
-- Object size distributions and the request format of the clients to reproduce
-
-The standard warp benchmarks `put`, `get`, `mixed`, `multipart-put`, `stat`, `list` and `delete` are available as [examples](#examples).
 
 There is no practical difference in measuring server performance. In a comparison against versitygw on the same machine, with the same request format and keep-alive connections, the latency measured by xk6-s3 was within about 0.1ms per request of warp, which is the processing cost of aws-sdk-go-v2 compared with minio-go. Note the following when comparing the numbers with other tools:
 
