@@ -3,10 +3,12 @@ package s3
 
 import (
 	"crypto/rand"
+	"errors"
 	"os"
 	"strings"
 	"sync"
 
+	"github.com/fujiwara/xk6-s3/internal/metrics"
 	"go.k6.io/k6/v2/js/modules"
 )
 
@@ -26,6 +28,12 @@ func init() {
 type RootModule struct {
 	runIDOnce sync.Once
 	runID     string
+
+	metricsOnce sync.Once
+	metrics     *metrics.Metrics
+	metricsErr  error
+
+	warnings warningLimiter
 }
 
 // ModuleInstance is the per-VU module instance.
@@ -50,6 +58,14 @@ func (r *RootModule) NewModuleInstance(vu modules.VU) modules.Instance {
 	r.runIDOnce.Do(func() {
 		r.runID = resolveRunID(lookupEnvFunc(vu))
 	})
+	r.metricsOnce.Do(func() {
+		env := vu.InitEnv()
+		if env == nil || env.Registry == nil {
+			r.metricsErr = errors.New("xk6-s3 must be imported in the init context")
+			return
+		}
+		r.metrics, r.metricsErr = metrics.Register(env.Registry)
+	})
 	return &ModuleInstance{vu: vu, root: r}
 }
 
@@ -57,7 +73,8 @@ func (r *RootModule) NewModuleInstance(vu modules.VU) modules.Instance {
 func (mi *ModuleInstance) Exports() modules.Exports {
 	return modules.Exports{
 		Named: map[string]any{
-			"runId": mi.RunID,
+			"runId":  mi.RunID,
+			"Client": mi.newClient,
 		},
 	}
 }

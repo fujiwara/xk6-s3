@@ -71,6 +71,7 @@ S3エラー・ネットワークエラーでは例外を投げず、結果オブ
 | `status` | HTTPステータス(ネットワークエラー時は0) |
 | `bytes` | ボディの送信または受信バイト数 |
 | `errorKind` / `errorCode` | エラー分類とS3エラーコード(エラー処理参照) |
+| `error` | エラーメッセージ(成功時は空) |
 | `requestId` | `x-amz-request-id`。サーバログとの突き合わせ用 |
 
 ## クライアント設定
@@ -150,7 +151,7 @@ k6組み込みメトリクスと自前メトリクスを併用する。SDKのHTT
 | --- | --- | --- | --- |
 | `s3_op_duration` | Trend | op | 操作の全体時間(ボディ転送を含む) |
 | `s3_op_ttfb` | Trend | op | GETのみ。レスポンスヘッダ受信まで |
-| `s3_op_bytes` | Counter | op | ボディの送信(PUT)または受信(GET)バイト数 |
+| `s3_op_bytes` | Counter | op | ボディの送信(PUT)または受信(GET)バイト数。成功した操作のみ |
 | `s3_op_errors` | Rate | op | 操作の失敗率。閾値判定用 |
 | `s3_errors` | Counter | op, error\_kind, error\_code, status | エラーの内訳 |
 
