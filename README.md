@@ -203,6 +203,39 @@ $ AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
 
 The examples create the bucket if missing and delete the objects of the run in `teardown()`. Operations in `setup()` and `teardown()` are also recorded, so the thresholds are filtered by the `scenario` tag.
 
+## Comparison with warp
+
+For measuring the performance of an S3-compatible server, there is no practical difference between xk6-s3 and [warp](https://github.com/minio/warp). With the same request format and connection handling, both tools report the same latency and throughput within the client-side overhead described below, which is small compared to the server time and cancels out when servers are compared with the same tool.
+
+### Measurement
+
+- Server: versitygw v1.8.0 (posix backend on tmpfs, `--keep-alive`, host network, default request logging), pinned to CPUs 0-7 of a 16-CPU machine
+- Clients: warp v1.8.2 (minio-go v7.0.98) and xk6-s3 on k6 v2.3.0, pinned to CPUs 8-15
+- HTTPS, 4 concurrent clients (`--concurrent 4` / 4 VUs), PUT and GET of 64KiB and 1MiB objects
+- The load had headroom: the server used about 3 of its 8 CPUs and the client at most about 2 CPUs
+- xk6-s3 used `checksum: when_required`, which sends the same requests as warp (`UNSIGNED-PAYLOAD`, no checksum). This was verified by recording the requests of both tools
+- warp and xk6-s3 were run alternately, three times each. The per-request raw data of both tools (`warp --full`, `k6 --out csv`) was analyzed with the same script over the same steady-state window
+
+| Operation | p50 latency (xk6-s3 / warp) | Mean latency difference | Throughput difference |
+| --- | --- | --- | --- |
+| GET 1MiB | 4.51ms / 4.41ms | +0.12ms | -4.0% |
+| PUT 1MiB | 4.24ms / 4.06ms | +0.15ms | -4.9% |
+| GET 64KiB | 0.75ms / 0.69ms | +0.08ms | -14.6% |
+| PUT 64KiB | 0.89ms / 0.81ms | +0.07ms | -12.1% |
+
+The differences come from the client side:
+
+- Latency: about 0.07-0.15ms per request, the processing cost of aws-sdk-go-v2 compared with minio-go. Plain aws-sdk-go-v2 without k6 showed the same or higher latency than xk6-s3 (checked with 64KiB objects), so k6 does not add latency to `s3_op_duration`.
+- Throughput: with a fixed number of VUs and spare server capacity, throughput is the number of VUs divided by the time per iteration, so the client overhead and the k6 iteration overhead (about 0.05-0.09ms between operations) lower it for small objects. This does not reflect the server; add VUs, or use the `constant-arrival-rate` executor to fix the request rate.
+
+The relative differences above are large for small objects only because the server responds in less than a millisecond on localhost. With network latency of a few milliseconds or more, the offset is within the noise. The behavior when the server is saturated was not compared, because localhost does not provide stable conditions for it.
+
+### Notes for fair comparisons
+
+- **Request format**: the `checksum` and `payloadSigning` options change the work of the server (see [Request format](#request-format)). Match them when comparing with other tools.
+- **Servers that close connections**: versitygw disables keep-alive by default and closes the connection after every response. Then every request needs a new TLS handshake. warp resumes TLS sessions with a session cache in its HTTP transport, while k6 (and the default HTTP transport of aws-sdk-go-v2) performs a full handshake each time. In our measurement this made xk6-s3 about 1.2ms slower per request and put more TLS work on the server. Run versitygw with `--keep-alive` (or `VGW_KEEP_ALIVE=true`) when comparing. Note that xk6-s3 is closer to real aws-sdk-go-v2 clients in this respect.
+- **Docker port forwarding**: `docker run -p` relays traffic through docker-proxy, which added about 0.25ms per request in our measurement and competes for CPU with the clients. Use host networking for benchmarks on a single machine.
+
 ## Development
 
 ```console
