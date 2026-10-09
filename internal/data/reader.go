@@ -34,6 +34,11 @@ func NewReader(buf []byte, offset, size int64) (*Reader, error) {
 	return &Reader{buf: buf, offset: offset, size: size}, nil
 }
 
+// Offset returns the start offset in the buffer.
+func (r *Reader) Offset() int64 {
+	return r.offset
+}
+
 // Size returns the total number of bytes the Reader produces.
 func (r *Reader) Size() int64 {
 	return r.size

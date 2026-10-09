@@ -44,7 +44,7 @@ flowchart TB
 
 SDKのHTTPクライアントにはVUのk6 Transportを使う。これにより `data_sent` / `data_received` がk6側で自動記録される。単発の操作(Put / Get など)では1つのVUが同時に使う接続は1本なので、VU単位の接続プールで不足しない。
 
-一方、`putObjectMultipart`、`preload`、`deletePrefix` は1つのVUの中でgoroutineにより並列に通信する。k6 Transportのアイドル接続の上限はホストあたり `batchPerHost`(既定6)、全体で `batch`(既定20)なので、これを超える並列度では接続の張り直しが起きる。そこで並列操作では、VUのTransport(`*http.Transport`)を `Clone()` し、`MaxIdleConnsPerHost` と `MaxIdleConns` を指定した並列度に引き上げた専用のTransportを、その操作の間だけ使う。`DialContext` はVUのk6 Dialerのまま引き継がれるため、送受信バイトの計数とTLS設定は維持される。Transportが `*http.Transport` でない場合(k6内部の変更など)は警告を出し、VUのTransportをそのまま使う。
+一方、`putObjectMultipart`、`preload`、`deletePrefix` は1つのVUの中でgoroutineにより並列に通信する。k6 Transportのアイドル接続の上限はホストあたり `batchPerHost`(既定6)、全体で `batch`(既定20)なので、これを超える並列度では接続の張り直しが起きる。そこで並列操作では、VUのTransport(`*http.Transport`)を `Clone()` し、`MaxIdleConnsPerHost` と `MaxIdleConns` を指定した並列度に引き上げた専用のTransportを使う。専用のTransportは接続を再利用するためクライアントごとに保持し、より大きな並列度が指定されたときに作り直す。`DialContext` はVUのk6 Dialerのまま引き継がれるため、送受信バイトの計数とTLS設定は維持される。Transportが `*http.Transport` でない場合(k6内部の変更など)は警告を出し、VUのTransportをそのまま使う。
 
 k6 Transportはinitコンテキストでは使えないため、SDKクライアントは各VUの初回呼び出し時に遅延生成する。以前のサンプルシナリオにあった「全VUでクライアントを共有する」案は、この方針で置き換える。VU状態というk6内部APIへの依存は、互換性CIで検知する。
 
@@ -56,12 +56,14 @@ k6 Transportはinitコンテキストでは使えないため、SDKクライア�
 | --- | --- | --- |
 | `createBucket` / `deleteBucket` | バケット操作 | bucket |
 | `putObject` | アップロード | bucket, key, size |
-| `putObjectMultipart` | マルチパートアップロード。失敗時は自動でAbort | bucket, key, size, { partSize, concurrency } |
+| `putObjectMultipart` | マルチパートアップロード。失敗時は自動でAbort | bucket, key, size, { partSize = 5MiB, concurrency = 5 } |
 | `getObject` | ダウンロード。ボディはGo側で読み捨て | bucket, key |
 | `headObject` / `deleteObject` | メタデータ取得・削除 | bucket, key |
-| `listObjects` | ListObjectsV2 | bucket, prefix, { maxKeys, maxPages } |
-| `preload` | setup用の並列事前投入 | bucket, prefix, count, size, { concurrency } |
-| `deletePrefix` | 後片付け用の並列削除 | bucket, prefix, { concurrency } |
+| `listObjects` | ListObjectsV2。1リクエストを1回の `list` 操作として計測 | bucket, prefix, { maxKeys, maxPages = 1(0で全件) } |
+| `preload` | setup用の並列事前投入。キーは `prefix + 連番`(0から) | bucket, prefix, count, size, { concurrency = 16 } |
+| `deletePrefix` | 後片付け用の並列削除。誤操作防止のため空のprefixは不可 | bucket, prefix, { concurrency = 16 } |
+
+`putObjectMultipart` は aws-sdk-go-v2 の upload manager と同じ送り方を再現する。既定のパートサイズ(5MiB)と並列度(5)はupload managerの既定値に合わせる。`checksum: when_supported` ではCreateMultipartUploadとUploadPartにチェックサムアルゴリズム(未指定時はCRC32)を指定し、CompleteMultipartUploadに各パートのチェックサムを含める。`when_required` ではいずれも指定しない。タイムアウトは個々のリクエストに適用し、全体には適用しない。パートの失敗時は残りのパートを打ち切ってAbortする。打ち切られたパートは `canceled` として扱い、メトリクスに記録しない。Abortはテスト終了でVUコンテキストがキャンセルされた後も実行し、未完了のアップロードを残さない。
 
 S3エラー・ネットワークエラーでは例外を投げず、結果オブジェクトを返す。例外を投げるのは引数不正などのスクリプト側の誤りに限る。イテレーションの中断によるエラー率の歪みを避けるためである。
 
@@ -73,6 +75,10 @@ S3エラー・ネットワークエラーでは例外を投げず、結果オブ
 | `errorKind` / `errorCode` | エラー分類とS3エラーコード(エラー処理参照) |
 | `error` | エラーメッセージ(成功時は空) |
 | `requestId` | `x-amz-request-id`。サーバログとの突き合わせ用 |
+| `count` | `listObjects` / `preload` / `deletePrefix` で一覧・投入・削除できたオブジェクト数 |
+| `failed` | `preload` / `deletePrefix` で失敗したオブジェクト数 |
+
+`preload` / `deletePrefix` の結果は、失敗が1件もなければ `ok` とし、エラー情報には最初の失敗を入れる。
 
 ## クライアント設定
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -32,11 +33,21 @@ type testEnv struct {
 // initScript in the init context and moves the VU to the VU context.
 func newTestEnv(t *testing.T, initScript string) *testEnv {
 	t.Helper()
+	return newTestEnvWith(t, initScript, nil)
+}
+
+// newTestEnvWith is newTestEnv with a middleware in front of the fake S3 server.
+func newTestEnvWith(t *testing.T, initScript string, wrap func(http.Handler) http.Handler) *testEnv {
+	t.Helper()
 	backend := s3mem.New()
 	if err := backend.CreateBucket(testBucket); err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(gofakes3.New(backend).Server())
+	var handler http.Handler = gofakes3.New(backend).Server()
+	if wrap != nil {
+		handler = wrap(handler)
+	}
+	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 
 	rt := modulestest.NewRuntime(t)

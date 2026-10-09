@@ -83,9 +83,22 @@ Unknown keys are rejected.
 | Method | Description |
 | --- | --- |
 | `putObject(bucket, key, size)` | Upload an object with a body generated on the Go side |
+| `putObjectMultipart(bucket, key, size, options?)` | Upload an object with a multipart upload. The upload is aborted on failure |
 | `getObject(bucket, key)` | Download an object. The body is discarded on the Go side |
 | `headObject(bucket, key)` | Get object metadata |
 | `deleteObject(bucket, key)` | Delete an object |
+| `listObjects(bucket, prefix, options?)` | List objects with ListObjectsV2 |
+| `createBucket(bucket)` / `deleteBucket(bucket)` | Create or delete a bucket |
+| `preload(bucket, prefix, count, size, options?)` | Upload `count` objects named `prefix + "0"`, ... concurrently, for `setup()` |
+| `deletePrefix(bucket, prefix, options?)` | Delete all objects under a non-empty prefix concurrently, for `teardown()` |
+
+Options:
+
+- `putObjectMultipart`: `partSize` (default `"5MiB"`), `concurrency` (default `5`). The defaults follow the aws-sdk-go-v2 upload manager. As the upload manager does, the checksum algorithm is set on CreateMultipartUpload and UploadPart when `checksum` is `when_supported`, and the part checksums are sent with CompleteMultipartUpload. The `timeout` applies to each request.
+- `listObjects`: `maxKeys` (default: server default), `maxPages` (default `1`, `0` for all pages). Each request is measured as a `list` operation.
+- `preload` / `deletePrefix`: `concurrency` (default `16`). Each object operation is measured as `put` / `delete`.
+
+Operations that send requests concurrently use a copy of the VU's k6 transport with idle connection limits raised to the concurrency, so that connections are reused beyond `batchPerHost`.
 
 S3 and network errors do not throw. Each operation returns a result object, so that an error does not abort the iteration. Only script errors (invalid arguments, calls in the init context) throw.
 
@@ -98,6 +111,10 @@ S3 and network errors do not throw. Each operation returns a result object, so t
 | `errorCode` | S3 error code such as `NoSuchKey` or `SlowDown` (for `s3` errors) |
 | `error` | Error message. Empty on success |
 | `requestId` | `x-amz-request-id` of the response |
+| `count` | Objects listed, uploaded or deleted (`listObjects`, `preload`, `deletePrefix`) |
+| `failed` | Objects that failed (`preload`, `deletePrefix`) |
+
+`preload` and `deletePrefix` are `ok` when no object failed, and report the first error.
 
 The first few failures of each operation type are logged as warnings with the request ID.
 
@@ -130,13 +147,13 @@ $ XK6_S3_RUN_ID=run-001 ./k6 run --tag test-id=run-001 script.js
 | `s3_op_errors` | Rate | Failure rate of operations |
 | `s3_errors` | Counter | Errors, tagged with `error_kind`, `error_code` and `status` |
 
-All metrics are tagged with `op` (`put`, `get`, `head`, `delete`) and the VU tags such as `scenario` and `group`. `bucket` and `size_class` (`<4KiB`, `<64KiB`, `<1MiB`, `<16MiB`, `<128MiB`, `>=128MiB`) are added when enabled by the `tags` option. Operations canceled by the end of the test are not recorded.
+All metrics are tagged with `op` (`put`, `get`, `head`, `delete`, `list`, `create_bucket`, `delete_bucket`, `put_multipart` for a whole multipart upload, `upload_part` for each part) and the VU tags such as `scenario` and `group`. `bucket` and `size_class` (`<4KiB`, `<64KiB`, `<1MiB`, `<16MiB`, `<128MiB`, `>=128MiB`) are added when enabled by the `tags` option. Operations canceled by the end of the test are not recorded.
 
 `data_sent` / `data_received` are emitted by k6 at the end of each iteration. Use `s3_op_bytes` for throughput over time.
 
 ## Request format
 
-The `checksum` and `payloadSigning` options change how PutObject requests are sent, which also changes how the server receives and verifies them. Choose them to reproduce the clients you expect, not to reduce the load generator's CPU usage. The defaults reproduce the current aws-sdk-go-v2 defaults.
+The `checksum` and `payloadSigning` options change how PutObject and UploadPart requests are sent, which also changes how the server receives and verifies them. Choose them to reproduce the clients you expect, not to reduce the load generator's CPU usage. The defaults reproduce the current aws-sdk-go-v2 defaults.
 
 | Scheme | `checksum` | `payloadSigning` | `x-amz-content-sha256` | Body | Checksum |
 | --- | --- | --- | --- | --- | --- |
