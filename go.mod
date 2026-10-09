@@ -14,7 +14,7 @@ require (
 	github.com/aws/smithy-go v1.28.4
 	github.com/grafana/sobek v0.0.0-20260908083152-4698bc773ae7
 	github.com/johannesboyne/gofakes3 v1.2.0
-	github.com/sirupsen/logrus v1.9.3
+	github.com/sirupsen/logrus v1.10.2
 )
 
 require (
