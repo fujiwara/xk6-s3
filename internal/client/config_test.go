@@ -102,6 +102,34 @@ func TestParseConfigCredentialsFromEnv(t *testing.T) {
 	}
 }
 
+func TestParseConfigRegionFromEnv(t *testing.T) {
+	base := map[string]any{"endpoint": "http://localhost", "accessKey": "a", "secretKey": "s"}
+	tests := []struct {
+		env  map[string]string
+		cfg  map[string]any
+		want string
+	}{
+		{nil, nil, "us-east-1"},
+		{map[string]string{"AWS_REGION": "ap-northeast-1"}, nil, "ap-northeast-1"},
+		{map[string]string{"AWS_DEFAULT_REGION": "eu-west-1"}, nil, "eu-west-1"},
+		{map[string]string{"AWS_REGION": "ap-northeast-1", "AWS_DEFAULT_REGION": "eu-west-1"}, nil, "ap-northeast-1"},
+		{map[string]string{"AWS_REGION": "", "AWS_DEFAULT_REGION": "eu-west-1"}, nil, "eu-west-1"},
+		{map[string]string{"AWS_REGION": "ap-northeast-1"}, map[string]any{"region": "us-west-2"}, "us-west-2"},
+	}
+	for _, tt := range tests {
+		m := maps.Clone(base)
+		maps.Copy(m, tt.cfg)
+		cfg, err := ParseConfig(m, func(k string) (string, bool) { v, ok := tt.env[k]; return v, ok })
+		if err != nil {
+			t.Errorf("env %v: %v", tt.env, err)
+			continue
+		}
+		if cfg.Region != tt.want {
+			t.Errorf("env %v, config %v: Region = %q, want %q", tt.env, tt.cfg, cfg.Region, tt.want)
+		}
+	}
+}
+
 func TestParseConfigEndpointFromEnv(t *testing.T) {
 	base := map[string]any{"accessKey": "a", "secretKey": "s"}
 	tests := []struct {

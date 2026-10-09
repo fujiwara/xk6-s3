@@ -40,6 +40,7 @@ import { check } from "k6";
 const client = new s3.Client({
   endpoint: "http://localhost:7070",
   // endpoint defaults to AWS_ENDPOINT_URL_S3 or AWS_ENDPOINT_URL
+  // region defaults to AWS_REGION, AWS_DEFAULT_REGION or us-east-1
   // accessKey / secretKey default to AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
 });
 
@@ -67,7 +68,7 @@ Create clients in the init context. The configuration is validated there, and th
 | Key | Default | Description |
 | --- | --- | --- |
 | `endpoint` | `AWS_ENDPOINT_URL_S3`, then `AWS_ENDPOINT_URL` | Endpoint URL (`http://` or `https://`). Required unless set by the environment variables |
-| `region` | `us-east-1` | Region for signing |
+| `region` | `AWS_REGION`, then `AWS_DEFAULT_REGION`, then `us-east-1` | Region for signing. Also sent as the LocationConstraint of `createBucket` unless `us-east-1` |
 | `accessKey` / `secretKey` / `sessionToken` | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` | Static credentials |
 | `pathStyle` | `true` | Use path-style addressing |
 | `checksum` | `when_supported` | `when_supported` / `when_required`. Applied to both request checksum calculation and response checksum validation |

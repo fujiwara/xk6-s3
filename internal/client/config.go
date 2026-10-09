@@ -25,6 +25,10 @@ const (
 	PayloadSigningSigned   = "signed"
 )
 
+// DefaultRegion is the region used when neither the config nor the
+// environment specifies one.
+const DefaultRegion = "us-east-1"
+
 // Optional tags that can be enabled by the tags setting.
 const (
 	TagBucket    = "bucket"
@@ -69,11 +73,10 @@ var configKeys = []string{
 }
 
 // ParseConfig validates a configuration object exported from JavaScript and
-// fills in the defaults. lookupEnv is used for the default endpoint and
-// credentials.
+// fills in the defaults. lookupEnv is used for the default endpoint, region
+// and credentials.
 func ParseConfig(m map[string]any, lookupEnv func(string) (string, bool)) (Config, error) {
 	cfg := Config{
-		Region:         "us-east-1",
 		PathStyle:      true,
 		Checksum:       ChecksumWhenSupported,
 		PayloadSigning: PayloadSigningAuto,
@@ -111,6 +114,9 @@ func ParseConfig(m map[string]any, lookupEnv func(string) (string, bool)) (Confi
 
 	str("endpoint", &cfg.Endpoint)
 	str("region", &cfg.Region)
+	if cfg.Region == "" {
+		cfg.Region = envOr(lookupEnv, DefaultRegion, "AWS_REGION", "AWS_DEFAULT_REGION")
+	}
 	str("accessKey", &cfg.AccessKey)
 	str("secretKey", &cfg.SecretKey)
 	str("sessionToken", &cfg.SessionToken)
@@ -150,12 +156,7 @@ func ParseConfig(m map[string]any, lookupEnv func(string) (string, bool)) (Confi
 
 	if cfg.Endpoint == "" {
 		// The same precedence as the AWS SDKs: the service-specific variable first.
-		for _, name := range []string{"AWS_ENDPOINT_URL_S3", "AWS_ENDPOINT_URL"} {
-			if v, ok := lookupEnv(name); ok && v != "" {
-				cfg.Endpoint = v
-				break
-			}
-		}
+		cfg.Endpoint = envOr(lookupEnv, "", "AWS_ENDPOINT_URL_S3", "AWS_ENDPOINT_URL")
 	}
 	if cfg.Endpoint == "" {
 		errs = append(errs, errors.New("endpoint is required (or set AWS_ENDPOINT_URL_S3 or AWS_ENDPOINT_URL)"))
@@ -178,6 +179,16 @@ func ParseConfig(m map[string]any, lookupEnv func(string) (string, bool)) (Confi
 	}
 
 	return cfg, errors.Join(errs...)
+}
+
+// envOr returns the first non-empty value of the environment variables, or def.
+func envOr(lookupEnv func(string) (string, bool), def string, names ...string) string {
+	for _, name := range names {
+		if v, ok := lookupEnv(name); ok && v != "" {
+			return v
+		}
+	}
+	return def
 }
 
 // parseDuration accepts a duration string such as "30s" or a number of
