@@ -1,6 +1,7 @@
 package s3
 
 import (
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -139,6 +140,9 @@ func (f *failingPart) wrap(partNumber string) func(http.Handler) http.Handler {
 				f.mu.Unlock()
 			}
 			if r.Method == http.MethodPut && q.Get("partNumber") == partNumber {
+				// Read the body as a real server does, so that the client
+				// receives the response instead of a connection reset.
+				_, _ = io.Copy(io.Discard, r.Body)
 				w.WriteHeader(http.StatusInternalServerError)
 				_, _ = w.Write([]byte(`<Error><Code>InternalError</Code><Message>injected</Message></Error>`))
 				return
