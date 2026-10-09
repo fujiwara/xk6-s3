@@ -89,6 +89,7 @@ Unknown keys are rejected. The default values from environment variables are rea
 | `getObject(bucket, key)` | Download an object. The body is discarded on the Go side |
 | `headObject(bucket, key)` | Get object metadata |
 | `deleteObject(bucket, key)` | Delete an object |
+| `deleteObjects(bucket, keys, options?)` | Delete up to 1000 objects with one DeleteObjects request |
 | `listObjects(bucket, prefix, options?)` | List objects with ListObjectsV2 |
 | `createBucket(bucket)` / `deleteBucket(bucket)` | Create or delete a bucket |
 | `preload(bucket, prefix, count, size, options?)` | Upload `count` objects named `prefix + "0"`, ... concurrently, for `setup()` |
@@ -97,6 +98,7 @@ Unknown keys are rejected. The default values from environment variables are rea
 Options:
 
 - `putObjectMultipart`: `partSize` (default `"5MiB"`), `concurrency` (default `5`). The defaults follow the aws-sdk-go-v2 upload manager. As the upload manager does, the checksum algorithm is set on CreateMultipartUpload and UploadPart when `checksum` is `when_supported`, and the part checksums are sent with CompleteMultipartUpload. The `timeout` applies to each request.
+- `deleteObjects`: `quiet` (default `false`, as the S3 API and minio-go). The result is not `ok` when any object was not deleted, and has the first per-object error.
 - `listObjects`: `maxKeys` (default: server default), `maxPages` (default `1`, `0` for all pages). Each request is measured as a `list` operation.
 - `preload` / `deletePrefix`: `concurrency` (default `16`). Each object operation is measured as `put` / `delete`.
 
@@ -113,8 +115,8 @@ S3 and network errors do not throw. Each operation returns a result object, so t
 | `errorCode` | S3 error code such as `NoSuchKey` or `SlowDown` (for `s3` errors) |
 | `error` | Error message. Empty on success |
 | `requestId` | `x-amz-request-id` of the response |
-| `count` | Objects listed, uploaded or deleted (`listObjects`, `preload`, `deletePrefix`) |
-| `failed` | Objects that failed (`preload`, `deletePrefix`) |
+| `count` | Objects listed, uploaded or deleted (`listObjects`, `deleteObjects`, `preload`, `deletePrefix`) |
+| `failed` | Objects that failed (`deleteObjects`, `preload`, `deletePrefix`) |
 
 `preload` and `deletePrefix` are `ok` when no object failed, and report the first error.
 
@@ -149,7 +151,7 @@ $ XK6_S3_RUN_ID=run-001 ./k6 run --tag test-id=run-001 script.js
 | `s3_op_errors` | Rate | Failure rate of operations |
 | `s3_errors` | Counter | Errors, tagged with `error_kind`, `error_code` and `status` |
 
-All metrics are tagged with `op` (`put`, `get`, `head`, `delete`, `list`, `create_bucket`, `delete_bucket`, `put_multipart` for a whole multipart upload, `upload_part` for each part) and the VU tags such as `scenario` and `group`. `bucket` and `size_class` (`<4KiB`, `<64KiB`, `<1MiB`, `<16MiB`, `<128MiB`, `>=128MiB`) are added when enabled by the `tags` option. Operations canceled by the end of the test are not recorded.
+All metrics are tagged with `op` (`put`, `get`, `head`, `delete`, `delete_objects`, `list`, `create_bucket`, `delete_bucket`, `put_multipart` for a whole multipart upload, `upload_part` for each part) and the VU tags such as `scenario` and `group`. `bucket` and `size_class` (`<4KiB`, `<64KiB`, `<1MiB`, `<16MiB`, `<128MiB`, `>=128MiB`) are added when enabled by the `tags` option. Operations canceled by the end of the test are not recorded.
 
 `data_sent` / `data_received` are emitted by k6 at the end of each iteration. Use `s3_op_bytes` for throughput over time.
 
@@ -196,7 +198,7 @@ Computing signatures and checksums uses the load generator's CPU. Monitor the CP
 | [multipart.js](examples/multipart.js) | Upload objects with multipart uploads (like `warp multipart-put`) | 4 VUs, 100MiB in 5MiB parts, 5 parts at a time (the aws-sdk-go-v2 upload manager defaults) |
 | [stat.js](examples/stat.js) | HeadObject on random objects preloaded in `setup()` | 20 VUs, 10000 objects of 1KiB |
 | [list.js](examples/list.js) | List all objects under a prefix per VU with ListObjectsV2 | 20 VUs, 10000 objects of 1KiB |
-| [delete.js](examples/delete.js) | Delete objects preloaded in `setup()` one by one. Unlike warp, which uses DeleteObjects in batches of 100 | 20 VUs, 25000 objects of 1KiB |
+| [delete.js](examples/delete.js) | Delete objects preloaded in `setup()` with DeleteObjects | 20 VUs, 25000 objects of 1KiB, 100 objects per request |
 
 ```console
 $ AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \

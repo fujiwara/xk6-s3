@@ -15,7 +15,7 @@ xk6-s3は、aws-sdk-go-v2を薄くラップしたk6のJavaScript拡張で、S3�
 | 区分 | 初版に含む | 次版以降 |
 | --- | --- | --- |
 | クライアント | エンドポイント、アドレス方式、送信方式(署名・チェックサム)の選択、タイムアウト、リトライ無効化 | 複数エンドポイント振り分け、チャンク署名方式(`STREAMING-AWS4-HMAC-SHA256-PAYLOAD`)の再現 |
-| 操作 | Put / Get / Head / Delete、ListObjectsV2、バケット作成・削除、マルチパートアップロード | Range GET、CopyObject、DeleteObjects、条件付き・バージョニング・タグ |
+| 操作 | Put / Get / Head / Delete、DeleteObjects、ListObjectsV2、バケット作成・削除、マルチパートアップロード | Range GET、CopyObject、条件付き・バージョニング・タグ |
 | データ | サイズ指定と分布、Go側でのボディ生成と読み捨て | 圧縮率指定、読み出し内容の検証 |
 | キー・データセット | 実行IDつきプレフィックス、並列プリロード、プレフィックス一括削除 | Zipf分布などのアクセス偏り |
 | 計測 | k6組み込み+自前メトリクス、エラー分類、タグ制御 | トレース、パート単位以上の詳細タイミング |
@@ -59,6 +59,7 @@ k6 Transportはinitコンテキストでは使えないため、SDKクライア�
 | `putObjectMultipart` | マルチパートアップロード。失敗時は自動でAbort | bucket, key, size, { partSize = 5MiB, concurrency = 5 } |
 | `getObject` | ダウンロード。ボディはGo側で読み捨て | bucket, key |
 | `headObject` / `deleteObject` | メタデータ取得・削除 | bucket, key |
+| `deleteObjects` | DeleteObjectsによる一括削除(最大1000件)。キー単位のエラーが1件でもあれば失敗とし、最初のエラーを返す | bucket, keys, { quiet = false } |
 | `listObjects` | ListObjectsV2。1リクエストを1回の `list` 操作として計測 | bucket, prefix, { maxKeys, maxPages = 1(0で全件) } |
 | `preload` | setup用の並列事前投入。キーは `prefix + 連番`(0から) | bucket, prefix, count, size, { concurrency = 16 } |
 | `deletePrefix` | 後片付け用の並列削除。誤操作防止のため空のprefixは不可 | bucket, prefix, { concurrency = 16 } |
@@ -75,8 +76,8 @@ S3エラー・ネットワークエラーでは例外を投げず、結果オブ
 | `errorKind` / `errorCode` | エラー分類とS3エラーコード(エラー処理参照) |
 | `error` | エラーメッセージ(成功時は空) |
 | `requestId` | `x-amz-request-id`。サーバログとの突き合わせ用 |
-| `count` | `listObjects` / `preload` / `deletePrefix` で一覧・投入・削除できたオブジェクト数 |
-| `failed` | `preload` / `deletePrefix` で失敗したオブジェクト数 |
+| `count` | `listObjects` / `deleteObjects` / `preload` / `deletePrefix` で一覧・投入・削除できたオブジェクト数 |
+| `failed` | `deleteObjects` / `preload` / `deletePrefix` で失敗したオブジェクト数 |
 
 `preload` / `deletePrefix` の結果は、失敗が1件もなければ `ok` とし、エラー情報には最初の失敗を入れる。
 
@@ -161,7 +162,7 @@ k6組み込みメトリクスと自前メトリクスを併用する。SDKのHTT
 | `s3_op_errors` | Rate | op | 操作の失敗率。閾値判定用 |
 | `s3_errors` | Counter | op, error\_kind, error\_code, status | エラーの内訳 |
 
-`op` の値は `put`、`get`、`head`、`delete`、`list`、`create_bucket`、`delete_bucket`、`put_multipart`(全体)、`upload_part`(パート単位)とする。
+`op` の値は `put`、`get`、`head`、`delete`、`delete_objects`、`list`、`create_bucket`、`delete_bucket`、`put_multipart`(全体)、`upload_part`(パート単位)とする。
 
 タグは3段階で管理する。
 
@@ -193,7 +194,7 @@ SDKはエラーボディを解析できないとき、HTTPステータスの文�
 ソースのみをOSSとして公開し、利用者が `xk6 build --with` で組み込む形で配布する。
 
 - **リポジトリ構成**: ルートパッケージ(拡張の登録)、`internal/client`(SDKクライアントとエラー分類)、`internal/data`(バッファとサイズ分布)、`internal/metrics`(メトリクス定義とタグ)、`examples/`
-- **プリセットシナリオ**: `examples/` にput、get、mixed、multipart、stat、list、deleteの7本を置く。Warpの `put`、`get`、`mixed`、`multipart-put`、`stat`、`list`、`delete` に相当する負荷を再現し(deleteはDeleteObjects未対応のため1件ずつ削除する)、既定値もWarpに合わせる(mixedの比率はGET:HEAD:PUT:DELETE=45:30:15:10)。接続先や規模は環境変数で指定する
+- **プリセットシナリオ**: `examples/` にput、get、mixed、multipart、stat、list、deleteの7本を置く。Warpの `put`、`get`、`mixed`、`multipart-put`、`stat`、`list`、`delete` に相当する負荷を再現し(deleteはWarpと同じくDeleteObjectsで100件ずつ削除する)、既定値もWarpに合わせる(mixedの比率はGET:HEAD:PUT:DELETE=45:30:15:10)。接続先や規模は環境変数で指定する
 - **E2Eテスト**: `e2e/formats.js` で全送信方式(スキーム × `checksum` × `checksumAlgorithm` × `payloadSigning`)のPUTとマルチパートを実サーバに対して検証する。`make e2e`(`e2e/run.sh`)がversitygw(posixバックエンド)をHTTPとHTTPSで起動し、E2Eテストとexamplesを短時間実行する
 - **README**: Go環境でのビルドとxk6 Dockerイメージでのビルド手順、動作確認済みのk6バージョン、確認済みのS3互換実装
 - **対応k6バージョン**: k6 v2系のみ(モジュールパス `go.k6.io/k6/v2`)。v1系はモジュールパスが異なるため対応しない

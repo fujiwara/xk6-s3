@@ -1,7 +1,8 @@
 // E2E test of all request formats against a real S3-compatible server.
 // Every combination of scheme, checksum, checksumAlgorithm and payloadSigning
-// uploads objects with putObject and putObjectMultipart, which the server
-// must accept with valid signatures and checksums.
+// uploads objects with putObject and putObjectMultipart and deletes them with
+// deleteObjects, which the server must accept with valid signatures and
+// checksums.
 //
 //   S3_ENDPOINT_HTTP / S3_ENDPOINT_HTTPS  endpoints of the same server
 //   S3_BUCKET                             bucket (created if missing)
@@ -54,13 +55,16 @@ export default function () {
     const get = client.getObject(bucket, key);
     const mp = client.putObjectMultipart(bucket, `${key}.mp`, "12MiB", { partSize: "5MiB", concurrency: 3 });
     const getMp = client.getObject(bucket, `${key}.mp`);
+    // DeleteObjects requires a checksum, which depends on the checksum setting.
+    const del = client.deleteObjects(bucket, [key, `${key}.mp`]);
     check(null, {
       [`${name} put`]: () => put.ok,
       [`${name} get`]: () => get.ok && get.bytes === 70 * 1024 * 1024,
       [`${name} multipart`]: () => mp.ok,
       [`${name} get multipart`]: () => getMp.ok && getMp.bytes === 12 * 1024 * 1024,
+      [`${name} deleteObjects`]: () => del.ok && del.count === 2,
     });
-    for (const r of [put, get, mp, getMp].filter((r) => !r.ok)) {
+    for (const r of [put, get, mp, getMp, del].filter((r) => !r.ok)) {
       console.error(`${name}: ${r.error}`);
     }
   }

@@ -21,15 +21,16 @@ const (
 
 // Operation names used as the op tag.
 const (
-	OpPut          = "put"
-	OpGet          = "get"
-	OpHead         = "head"
-	OpDelete       = "delete"
-	OpList         = "list"
-	OpCreateBucket = "create_bucket"
-	OpDeleteBucket = "delete_bucket"
-	OpPutMultipart = "put_multipart"
-	OpUploadPart   = "upload_part"
+	OpPut           = "put"
+	OpGet           = "get"
+	OpHead          = "head"
+	OpDelete        = "delete"
+	OpDeleteObjects = "delete_objects"
+	OpList          = "list"
+	OpCreateBucket  = "create_bucket"
+	OpDeleteBucket  = "delete_bucket"
+	OpPutMultipart  = "put_multipart"
+	OpUploadPart    = "upload_part"
 )
 
 // Tag names.
