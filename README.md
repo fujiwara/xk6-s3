@@ -1,34 +1,8 @@
 # xk6-s3
 
-Load test S3-compatible object storage with [k6](https://github.com/grafana/k6) scenarios, with server measurements on par with [warp](https://github.com/minio/warp).
+A [k6](https://github.com/grafana/k6) extension for load testing S3-compatible object storage.
 
-## Why xk6-s3
-
-- **Write the workload, not just pick a benchmark.** Express the access patterns of your application as a k6 script: multiple workloads at once, any executor (`ramping-vus`, `constant-arrival-rate`, ...), and pass/fail thresholds for CI. For example, check that small reads keep their p99 latency while large uploads run in the background.
-- **Server numbers on par with warp.** With the same request format, the latency measured by xk6-s3 is within about 0.1ms per request of warp ([details](#comparison-with-warp)). The standard warp benchmarks `put`, `get`, `mixed`, `multipart-put`, `stat`, `list` and `delete` are ready as [examples](#examples).
-- **Send what real clients send.** By default, requests have the same format as the current AWS SDKs (for example, `aws-chunked` uploads with trailing checksums over HTTPS), and can be switched to the formats of other clients. Signature and checksum handling of the server is exercised as in production, and compatibility issues surface as errors. All formats are tested against a real S3-compatible server.
-- **Large objects without a heavy load generator.** Object bodies are generated and discarded on the Go side, not in JavaScript, so large objects do not consume the CPU and memory of the load generator.
-- **The k6 ecosystem.** Metrics go to the end-of-test summary, thresholds and k6 outputs (OpenTelemetry, Prometheus, JSON, ...). S3 tests can be combined with `k6/http` in the same script.
-
-## Quick start
-
-Build a k6 binary with this extension (requires Go) and run an example against your storage:
-
-```console
-$ git clone https://github.com/fujiwara/xk6-s3.git && cd xk6-s3
-$ make build
-$ export AWS_ENDPOINT_URL_S3=http://localhost:7070 AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
-$ VUS=32 DURATION=1m SIZE=1MiB OBJECTS=1000 ./k6 run examples/get.js
-```
-
-The examples create the bucket `xk6-s3` if missing and delete the objects they upload. See [Build](#build) for other ways to build.
-
-> [!WARNING]
-> This extension is under initial development. The JavaScript API may change until v1.0.
-
-## Write your own scenario
-
-Does the p99 latency of small reads stay under 50ms while large multipart uploads run in the background? With k6 scenarios and thresholds:
+Write S3 benchmarks the same way as k6 tests: scenarios, executors, checks and thresholds. This one checks that small reads keep their p99 latency under 50ms while large multipart uploads run in the background:
 
 ```js
 import s3 from "k6/x/s3";
@@ -69,7 +43,27 @@ export function teardown() {
 }
 ```
 
-k6 exits with a non-zero status when a threshold fails. A runnable version is [examples/slo.js](examples/slo.js).
+A runnable version is [examples/slo.js](examples/slo.js).
+
+- Requests are sent with [aws-sdk-go-v2](https://github.com/aws/aws-sdk-go-v2) in its default request format, which can be changed to reproduce other clients ([Request format](#request-format)).
+- Object bodies are generated and discarded on the Go side, so large objects are cheap for the load generator.
+- Server performance is measured as with [warp](https://github.com/minio/warp) ([Comparison with warp](#comparison-with-warp)), and the standard warp benchmarks are available as [examples](#examples).
+
+## Quick start
+
+Build a k6 binary with this extension (requires Go) and run an example against your storage:
+
+```console
+$ git clone https://github.com/fujiwara/xk6-s3.git && cd xk6-s3
+$ make build
+$ export AWS_ENDPOINT_URL_S3=http://localhost:7070 AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
+$ VUS=32 DURATION=1m SIZE=1MiB OBJECTS=1000 ./k6 run examples/get.js
+```
+
+The examples create the bucket `xk6-s3` if missing and delete the objects they upload. See [Build](#build) for other ways to build.
+
+> [!WARNING]
+> This extension is under initial development. The JavaScript API may change until v1.0.
 
 ## Build
 
