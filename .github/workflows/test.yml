@@ -1,5 +1,10 @@
 name: test
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  schedule:
+    # weekly, to detect incompatibilities with new k6 releases
+    - cron: "0 0 * * 1"
 permissions:
   contents: read
 jobs:
@@ -9,9 +14,8 @@ jobs:
         go:
           - "1.26"
           - "1.27"
-    name: Test
+    name: Test (Go ${{ matrix.go }})
     runs-on: ubuntu-latest
-
     steps:
       - name: Check out code into the Go module directory
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -20,12 +24,48 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ matrix.go }}
-        id: go
 
       - name: Test
         run: |
           go test -race ./...
 
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        k6:
+          - "v2.3.0"
+          - "latest"
+    name: Build (k6 ${{ matrix.k6 }})
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27"
+
       - name: Build k6 with xk6
+        env:
+          K6_VERSION: ${{ matrix.k6 }}
         run: |
           make build
+          ./k6 version
+
+  e2e:
+    name: E2E (versitygw)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27"
+
+      - name: Run E2E tests
+        run: |
+          make e2e

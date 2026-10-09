@@ -170,11 +170,44 @@ Chunk-signed uploads (`STREAMING-AWS4-HMAC-SHA256-PAYLOAD`) are not supported by
 
 Computing signatures and checksums uses the load generator's CPU. Monitor the CPU usage of the load generator to make sure it is not saturated.
 
+## Examples
+
+[examples/](examples/) has benchmarks comparable to the [warp](https://github.com/minio/warp) benchmarks of the same names. They are configured by environment variables (see [examples/common.js](examples/common.js)).
+
+| Script | Description | Defaults |
+| --- | --- | --- |
+| [put.js](examples/put.js) | Upload objects with PutObject | 20 VUs, 10MiB |
+| [get.js](examples/get.js) | Download random objects preloaded in `setup()` | 20 VUs, 2500 objects of 10MiB |
+| [mixed.js](examples/mixed.js) | GET, HEAD, PUT and DELETE with weights 45:30:15:10 | 20 VUs, 2500 objects of 10MiB |
+| [multipart.js](examples/multipart.js) | Upload objects with multipart uploads | 4 VUs, 100MiB in 5MiB parts, 5 parts at a time |
+
+```console
+$ AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
+    S3_ENDPOINT=http://localhost:7070 VUS=32 DURATION=5m SIZE=1MiB \
+    ./k6 run examples/get.js
+```
+
+The examples create the bucket if missing and delete the objects of the run in `teardown()`. Operations in `setup()` and `teardown()` are also recorded, so the thresholds are filtered by the `scenario` tag.
+
+## Development
+
+```console
+$ make test   # unit tests
+$ make build  # build ./k6 with this extension
+$ make e2e    # E2E tests and examples against versitygw (posix backend) over HTTP and HTTPS; requires docker
+```
+
 ## Compatibility
 
 | xk6-s3 | k6 |
 | --- | --- |
 | main | v2.3.0 |
+
+Only k6 v2 is supported. CI builds the extension with the k6 versions above and the latest k6 every week.
+
+Tested S3-compatible implementations:
+
+- [versitygw](https://github.com/versity/versitygw) v1.8.0 (posix backend)
 
 ## LICENSE
 

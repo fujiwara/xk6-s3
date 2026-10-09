@@ -193,7 +193,8 @@ SDKはエラーボディを解析できないとき、HTTPステータスの文�
 ソースのみをOSSとして公開し、利用者が `xk6 build --with` で組み込む形で配布する。
 
 - **リポジトリ構成**: ルートパッケージ(拡張の登録)、`internal/client`(SDKクライアントとエラー分類)、`internal/data`(バッファとサイズ分布)、`internal/metrics`(メトリクス定義とタグ)、`examples/`
-- **プリセットシナリオ**: `examples/` にput、get、mixed、multipartの4本を置く。Warpの同名ベンチに相当する負荷を再現する
+- **プリセットシナリオ**: `examples/` にput、get、mixed、multipartの4本を置く。Warpの同名ベンチに相当する負荷を再現し、既定値もWarpに合わせる(mixedの比率はGET:HEAD:PUT:DELETE=45:30:15:10)。接続先や規模は環境変数で指定する
+- **E2Eテスト**: `e2e/formats.js` で全送信方式(スキーム × `checksum` × `checksumAlgorithm` × `payloadSigning`)のPUTとマルチパートを実サーバに対して検証する。`make e2e`(`e2e/run.sh`)がversitygw(posixバックエンド)をHTTPとHTTPSで起動し、E2Eテストとexamplesを短時間実行する
 - **README**: Go環境でのビルドとxk6 Dockerイメージでのビルド手順、動作確認済みのk6バージョン、確認済みのS3互換実装
 - **対応k6バージョン**: k6 v2系のみ(モジュールパス `go.k6.io/k6/v2`)。v1系はモジュールパスが異なるため対応しない
 - **CI**: 対応k6バージョンでのビルド確認をpushごとと週次で実行し、versitygw(posixバックエンド)のコンテナに対してexamplesを短時間実行する統合テストを行う
