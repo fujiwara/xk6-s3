@@ -9,7 +9,7 @@ jobs:
         go:
           - "1.26"
           - "1.27"
-    name: Build
+    name: Test
     runs-on: ubuntu-latest
 
     steps:
@@ -22,6 +22,10 @@ jobs:
           go-version: ${{ matrix.go }}
         id: go
 
-      - name: Build & Test
+      - name: Test
         run: |
           go test -race ./...
+
+      - name: Build k6 with xk6
+        run: |
+          make build

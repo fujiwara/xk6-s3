@@ -1,16 +1,15 @@
-.PHONY: clean test
+K6_VERSION ?= v2.3.0
+XK6 ?= go run go.k6.io/xk6/cmd/xk6@latest
 
-xk6-s3: go.* *.go
-	go build -o $@ ./cmd/xk6-s3
+.PHONY: build test clean
 
-clean:
-	rm -rf xk6-s3 dist/
+build: k6
+
+k6: go.* *.go
+	$(XK6) build $(K6_VERSION) --with github.com/fujiwara/xk6-s3=. --output $@
 
 test:
-	go test -v ./...
+	go test -race ./...
 
-install:
-	go install github.com/fujiwara/xk6-s3/cmd/xk6-s3
-
-dist:
-	goreleaser build --snapshot --clean
+clean:
+	rm -f k6
