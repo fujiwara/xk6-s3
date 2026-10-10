@@ -2,7 +2,7 @@
 export K6_VERSION ?= v2.3.0
 XK6 ?= go run go.k6.io/xk6/cmd/xk6@v1.4.14
 
-.PHONY: build test e2e clean
+.PHONY: build test e2e credits clean
 
 build: k6
 
@@ -14,6 +14,10 @@ test:
 
 e2e: k6
 	./e2e/run.sh
+
+# CREDITS lists the licenses of the modules in the k6 binary built with xk6.
+credits:
+	./scripts/credits.sh
 
 clean:
 	rm -f k6

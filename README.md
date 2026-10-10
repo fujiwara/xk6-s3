@@ -299,6 +299,7 @@ There is no practical difference in measuring server performance. In a compariso
 $ make test   # unit tests
 $ make build  # build ./k6 with this extension
 $ make e2e    # E2E tests and examples against versitygw (posix backend) over HTTP and HTTPS; requires docker
+$ make credits # regenerate CREDITS for the k6 binary
 ```
 
 ## Compatibility
@@ -318,6 +319,8 @@ Tested S3-compatible implementations:
 The source code of xk6-s3 is licensed under the [Apache License 2.0](LICENSE).
 
 k6 is licensed under the [GNU AGPL v3](https://github.com/grafana/k6/blob/master/LICENSE.md). A k6 binary built with this extension is subject to the terms of the AGPL v3.
+
+[CREDITS](CREDITS) lists the licenses and notices of the modules in a k6 binary built with this extension by xk6. Regenerate it with `make credits`, which uses [gocredits](https://github.com/Songmu/gocredits).
 
 ## Author
 
