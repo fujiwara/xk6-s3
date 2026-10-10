@@ -10,7 +10,12 @@ GOCREDITS=${GOCREDITS:-go run github.com/Songmu/gocredits/cmd/gocredits@v1.1.0}
 out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
 
-(cd cmd/xk6-s3 && $GOCREDITS -skip-missing .) >"$out/CREDITS" 2>"$out/missing.log"
+# Ignore cmd/xk6-s3/vendor, which goreleaser creates for the source archive
+# and may be stale.
+if ! (cd cmd/xk6-s3 && GOFLAGS=-mod=mod $GOCREDITS -skip-missing .) >"$out/CREDITS" 2>"$out/missing.log"; then
+  cat "$out/missing.log" >&2
+  exit 1
+fi
 
 # Modules without a license file. Their license is taken from the source headers.
 declare -A known=(
