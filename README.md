@@ -51,16 +51,15 @@ A runnable version is [examples/slo.js](examples/slo.js).
 
 ## Quick start
 
-Build a k6 binary with this extension (requires Go) and run an example against your storage:
+Download the `xk6-s3` binary (k6 with this extension) for your platform from [Releases](https://github.com/fujiwara/xk6-s3/releases), and run an example against your storage:
 
 ```console
 $ git clone https://github.com/fujiwara/xk6-s3.git && cd xk6-s3
-$ make build
 $ export AWS_ENDPOINT_URL_S3=http://localhost:7070 AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
-$ VUS=32 DURATION=1m SIZE=1MiB OBJECTS=1000 ./k6 run examples/get.js
+$ VUS=32 DURATION=1m SIZE=1MiB OBJECTS=1000 xk6-s3 run examples/get.js
 ```
 
-The examples create the bucket `xk6-s3` if missing and delete the objects they upload. See [Build](#build) for other ways to build.
+`xk6-s3` works as `k6` with the `k6/x/s3` module. The examples create the bucket `xk6-s3` if missing and delete the objects they upload. To build k6 yourself, for example with other extensions, see [Build](#build).
 
 > [!WARNING]
 > This extension is under initial development. The JavaScript API may change until v1.0.
@@ -86,7 +85,8 @@ $ docker run --rm -u "$(id -u):$(id -g)" -v "${PWD}:/xk6" \
 ### From a local checkout
 
 ```console
-$ make build
+$ make build                                # ./k6 built by xk6
+$ go -C cmd/xk6-s3 build -o ../../xk6-s3 .  # ./xk6-s3, the same as the released binary
 ```
 
 ## Usage
@@ -320,7 +320,15 @@ The source code of xk6-s3 is licensed under the [Apache License 2.0](LICENSE).
 
 k6 is licensed under the [GNU AGPL v3](https://github.com/grafana/k6/blob/master/LICENSE.md). A k6 binary built with this extension is subject to the terms of the AGPL v3.
 
-[CREDITS](CREDITS) lists the licenses and notices of the modules in a k6 binary built with this extension by xk6. Regenerate it with `make credits`, which uses [gocredits](https://github.com/Songmu/gocredits), when dependencies change. CI fails when CREDITS is out of date.
+### Binary releases
+
+The `xk6-s3` binaries in [Releases](https://github.com/fujiwara/xk6-s3/releases) are k6 built with this extension ([cmd/xk6-s3](cmd/xk6-s3)), and are distributed under the GNU AGPL v3. Each release has `xk6-s3_v<version>_source.tar.gz`, the corresponding source including all dependencies (`cmd/xk6-s3/vendor`). To build the binary from it without network access:
+
+```console
+$ go -C cmd/xk6-s3 build -mod=vendor .
+```
+
+[CREDITS](CREDITS) lists the licenses and notices of the modules in the binary, and is included in the release archives. Regenerate it with `make credits`, which uses [gocredits](https://github.com/Songmu/gocredits), when dependencies change. CI fails when CREDITS is out of date.
 
 ## Author
 
