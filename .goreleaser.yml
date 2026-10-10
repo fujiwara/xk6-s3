@@ -1,0 +1,51 @@
+version: 2
+project_name: xk6-s3
+before:
+  hooks:
+    # Vendor the dependencies for the source archive, which is the
+    # corresponding source of the binaries under the AGPL v3.
+    - go -C cmd/xk6-s3 mod vendor
+builds:
+  - id: xk6-s3
+    dir: cmd/xk6-s3
+    main: .
+    binary: xk6-s3
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+archives:
+  - name_template: "{{ .ProjectName }}_v{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - CREDITS
+      - README.md
+source:
+  enabled: true
+  name_template: "{{ .ProjectName }}_v{{ .Version }}_source"
+  files:
+    - cmd/xk6-s3/vendor/modules.txt
+    - cmd/xk6-s3/vendor/**/*
+checksum:
+  name_template: "checksums.txt"
+release:
+  use_existing_draft: true
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"

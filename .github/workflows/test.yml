@@ -55,6 +55,13 @@ jobs:
           make build
           ./k6 version
 
+      - name: Build the xk6-s3 binary
+        if: ${{ matrix.k6 == 'v2.3.0' }}
+        run: |
+          go -C cmd/xk6-s3 vet ./...
+          go -C cmd/xk6-s3 build -o ../../xk6-s3 .
+          ./xk6-s3 version
+
   credits:
     name: CREDITS
     runs-on: ubuntu-latest

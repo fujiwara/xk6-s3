@@ -18,3 +18,7 @@
 
 # k6 binary built by xk6
 /k6
+
+# goreleaser
+/dist/
+/cmd/xk6-s3/vendor/

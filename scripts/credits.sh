@@ -1,28 +1,16 @@
 #!/bin/bash
-# Generates CREDITS, the licenses of the modules in a k6 binary built with
-# this extension by xk6, with gocredits (https://github.com/Songmu/gocredits).
+# Generates CREDITS, the licenses of the modules in the xk6-s3 binary
+# (cmd/xk6-s3), with gocredits (https://github.com/Songmu/gocredits).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-XK6=${XK6:-go run go.k6.io/xk6/cmd/xk6@v1.4.14}
 GOCREDITS=${GOCREDITS:-go run github.com/Songmu/gocredits/cmd/gocredits@v1.1.0}
-export K6_VERSION=${K6_VERSION:-v2.3.0}
 
 out=$(mktemp -d)
-trap 'rm -rf "$out" ${builddir:+"$builddir"}' EXIT
+trap 'rm -rf "$out"' EXIT
 
-# Keep the build directory of xk6, which has the go.mod of the binary.
-$XK6 build --skip-cleanup --with github.com/fujiwara/xk6-s3=. --output "$out/k6" 2>"$out/build.log" ||
-  { cat "$out/build.log" >&2; exit 1; }
-builddir=$(sed -n 's/.*leaving directory \([^ ]*\) intact.*/\1/p' "$out/build.log")
-if [[ ! -f $builddir/go.mod ]]; then
-  echo "build directory not found in the xk6 output" >&2
-  cat "$out/build.log" >&2
-  exit 1
-fi
-
-(cd "$builddir" && $GOCREDITS -skip-missing .) >"$out/CREDITS" 2>"$out/missing.log"
+(cd cmd/xk6-s3 && $GOCREDITS -skip-missing .) >"$out/CREDITS" 2>"$out/missing.log"
 
 # Modules without a license file. Their license is taken from the source headers.
 declare -A known=(
@@ -61,4 +49,4 @@ while read -r line; do
 done <"$out/missing.log"
 
 cp "$out/CREDITS" CREDITS
-echo "wrote CREDITS for k6 $K6_VERSION" >&2
+echo "wrote CREDITS" >&2
