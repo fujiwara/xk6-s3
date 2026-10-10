@@ -55,6 +55,26 @@ jobs:
           make build
           ./k6 version
 
+  credits:
+    name: CREDITS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27"
+
+      - name: Check that CREDITS is up to date
+        run: |
+          make credits
+          if ! git diff --exit-code CREDITS; then
+            echo "::error file=CREDITS::CREDITS is out of date. Run 'make credits' and commit it."
+            exit 1
+          fi
+
   e2e:
     name: E2E (versitygw)
     runs-on: ubuntu-latest

@@ -320,7 +320,7 @@ The source code of xk6-s3 is licensed under the [Apache License 2.0](LICENSE).
 
 k6 is licensed under the [GNU AGPL v3](https://github.com/grafana/k6/blob/master/LICENSE.md). A k6 binary built with this extension is subject to the terms of the AGPL v3.
 
-[CREDITS](CREDITS) lists the licenses and notices of the modules in a k6 binary built with this extension by xk6. Regenerate it with `make credits`, which uses [gocredits](https://github.com/Songmu/gocredits).
+[CREDITS](CREDITS) lists the licenses and notices of the modules in a k6 binary built with this extension by xk6. Regenerate it with `make credits`, which uses [gocredits](https://github.com/Songmu/gocredits), when dependencies change. CI fails when CREDITS is out of date.
 
 ## Author
 
