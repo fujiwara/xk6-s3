@@ -35,7 +35,7 @@ func errorServer(t *testing.T, status int, body string, hits *atomic.Int64) stri
 }
 
 func getObject(ctx context.Context, cfg Config, hc *http.Client) error {
-	out, err := New(cfg, hc).GetObject(ctx, &s3.GetObjectInput{
+	out, err := New(cfg, hc, nil).GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String("bucket"),
 		Key:    aws.String("key"),
 	})
@@ -80,7 +80,7 @@ func TestClassifyResponseErrors(t *testing.T) {
 
 func TestClassifyHeadNotFound(t *testing.T) {
 	url := errorServer(t, 404, "", nil)
-	_, err := New(testConfig(url, map[string]any{}), http.DefaultClient).HeadObject(context.Background(),
+	_, err := New(testConfig(url, map[string]any{}), http.DefaultClient, nil).HeadObject(context.Background(),
 		&s3.HeadObjectInput{Bucket: aws.String("bucket"), Key: aws.String("key")})
 	want := ErrorInfo{Kind: KindHTTP, Status: 404, RequestID: "req-123"}
 	if got := Classify(err); got != want {

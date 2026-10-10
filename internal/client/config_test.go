@@ -66,6 +66,31 @@ func TestParseConfigValues(t *testing.T) {
 	}
 }
 
+func TestParseConfigTracing(t *testing.T) {
+	base := map[string]any{"endpoint": "http://localhost", "accessKey": "a", "secretKey": "s"}
+	cfg, err := ParseConfig(base, noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Tracing != (Tracing{SampleRate: DefaultSampleRate}) {
+		t.Errorf("default Tracing = %+v", cfg.Tracing)
+	}
+	base["tracing"] = map[string]any{"sampleRate": int64(1), "propagate": true}
+	if cfg, err = ParseConfig(base, noEnv); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Tracing != (Tracing{SampleRate: 1, Propagate: true}) {
+		t.Errorf("Tracing = %+v", cfg.Tracing)
+	}
+	base["tracing"] = map[string]any{"propagate": true}
+	if cfg, err = ParseConfig(base, noEnv); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Tracing != (Tracing{SampleRate: DefaultSampleRate, Propagate: true}) {
+		t.Errorf("Tracing = %+v", cfg.Tracing)
+	}
+}
+
 func TestParseConfigTimeoutMilliseconds(t *testing.T) {
 	cfg, err := ParseConfig(map[string]any{
 		"endpoint": "http://localhost", "accessKey": "a", "secretKey": "s", "timeout": int64(1500),
@@ -202,6 +227,12 @@ func TestParseConfigErrors(t *testing.T) {
 		{base("tags", "bucket"), "tags must be an array"},
 		{base("tags", []any{"key"}), "tags must contain only"},
 		{base("endpointUrl", "http://localhost"), "unknown config keys: [endpointUrl]"},
+		{base("tracing", true), "tracing must be an object"},
+		{base("tracing", map[string]any{"sampleRate": 1.5}), "tracing.sampleRate"},
+		{base("tracing", map[string]any{"sampleRate": -0.1}), "tracing.sampleRate"},
+		{base("tracing", map[string]any{"sampleRate": "1"}), "tracing.sampleRate"},
+		{base("tracing", map[string]any{"propagate": "yes"}), "tracing.propagate"},
+		{base("tracing", map[string]any{"rate": 1.0}), "unknown tracing key"},
 	}
 	for _, tt := range tests {
 		_, err := ParseConfig(tt.m, noEnv)

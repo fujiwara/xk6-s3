@@ -19,7 +19,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go/middleware"
+	"github.com/aws/smithy-go/tracing"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 // computeInputChecksumID is the ID of the SDK middleware that computes the
@@ -32,7 +34,8 @@ const unsignedPayload = "UNSIGNED-PAYLOAD"
 const crc64NVME = 0x9a6c_9329_ac4b_c9b5
 
 // New returns an S3 client for cfg that sends requests with httpClient.
-func New(cfg Config, httpClient aws.HTTPClient) *s3.Client {
+// tp is the tracer provider of the SDK spans; nil disables them.
+func New(cfg Config, httpClient aws.HTTPClient, tp tracing.TracerProvider) *s3.Client {
 	awsCfg := aws.Config{
 		Region:      cfg.Region,
 		Credentials: credentials.NewStaticCredentialsProvider(cfg.AccessKey, cfg.SecretKey, cfg.SessionToken),
@@ -53,7 +56,35 @@ func New(cfg Config, httpClient aws.HTTPClient) *s3.Client {
 	return s3.NewFromConfig(awsCfg, func(o *s3.Options) {
 		o.BaseEndpoint = aws.String(cfg.Endpoint)
 		o.UsePathStyle = cfg.PathStyle
+		if tp != nil {
+			o.TracerProvider = tp
+		}
+		if cfg.Tracing.Propagate {
+			o.APIOptions = append(o.APIOptions, addTraceContext)
+		}
 	})
+}
+
+// signingID is the ID of the SDK middleware that signs requests.
+const signingID = "Signing"
+
+// addTraceContext adds the W3C traceparent header of the span in the
+// context after signing, so that the signature is the same as without it.
+func addTraceContext(stack *middleware.Stack) error {
+	return stack.Finalize.Insert(traceContext{}, signingID, middleware.After)
+}
+
+type traceContext struct{}
+
+func (traceContext) ID() string { return "XK6S3:TraceContext" }
+
+func (traceContext) HandleFinalize(
+	ctx context.Context, in middleware.FinalizeInput, next middleware.FinalizeHandler,
+) (middleware.FinalizeOutput, middleware.Metadata, error) {
+	if req, ok := in.Request.(*smithyhttp.Request); ok {
+		propagation.TraceContext{}.Inject(ctx, propagation.HeaderCarrier(req.Header))
+	}
+	return next.HandleFinalize(ctx, in)
 }
 
 // ChecksumAlgorithmType returns the value for the ChecksumAlgorithm field of

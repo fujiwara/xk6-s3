@@ -39,6 +39,19 @@ const (
 // The first one is the SDK default.
 var ChecksumAlgorithms = []string{"CRC32", "CRC32C", "CRC64NVME", "SHA1", "SHA256"}
 
+// DefaultSampleRate is the default ratio of traced operations.
+const DefaultSampleRate = 0.01
+
+// Tracing is the tracing configuration.
+type Tracing struct {
+	// SampleRate is the ratio of operations traced with spans, in [0, 1].
+	// Failed operations are always traced.
+	SampleRate float64
+	// Propagate adds the W3C traceparent header to the requests of traced
+	// operations.
+	Propagate bool
+}
+
 // Config is the validated client configuration.
 type Config struct {
 	Endpoint     string
@@ -54,6 +67,7 @@ type Config struct {
 	Timeout           time.Duration
 	MaxAttempts       int
 	Tags              []string
+	Tracing           Tracing
 }
 
 // HTTPS reports whether the endpoint uses TLS.
@@ -70,6 +84,7 @@ func (c Config) HasTag(name string) bool {
 var configKeys = []string{
 	"endpoint", "region", "accessKey", "secretKey", "sessionToken", "pathStyle",
 	"checksum", "checksumAlgorithm", "payloadSigning", "timeout", "maxAttempts", "tags",
+	"tracing",
 }
 
 // ParseConfig validates a configuration object exported from JavaScript and
@@ -82,6 +97,7 @@ func ParseConfig(m map[string]any, lookupEnv func(string) (string, bool)) (Confi
 		PayloadSigning: PayloadSigningAuto,
 		Timeout:        60 * time.Second,
 		MaxAttempts:    1,
+		Tracing:        Tracing{SampleRate: DefaultSampleRate},
 	}
 	var unknown []string
 	for k := range m {
@@ -145,6 +161,13 @@ func ParseConfig(m map[string]any, lookupEnv func(string) (string, bool)) (Confi
 			errs = append(errs, fmt.Errorf("maxAttempts must be a positive integer: %v", v))
 		}
 		cfg.MaxAttempts = n
+	}
+	if v, ok := m["tracing"]; ok && v != nil {
+		t, err := parseTracing(v)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		cfg.Tracing = t
 	}
 	if v, ok := m["tags"]; ok && v != nil {
 		tags, err := parseTags(v)
@@ -231,6 +254,33 @@ func toInt(v any) (int, error) {
 		return 0, fmt.Errorf("not an integer: %v", v)
 	}
 	return int(f), nil
+}
+
+func parseTracing(v any) (Tracing, error) {
+	t := Tracing{SampleRate: DefaultSampleRate}
+	m, ok := v.(map[string]any)
+	if !ok {
+		return t, errors.New("tracing must be an object")
+	}
+	for k, v := range m {
+		switch k {
+		case "sampleRate":
+			f, ok := toFloat(v)
+			if !ok || f < 0 || f > 1 || math.IsNaN(f) {
+				return t, fmt.Errorf("tracing.sampleRate must be a number in [0, 1]: %v", v)
+			}
+			t.SampleRate = f
+		case "propagate":
+			b, ok := v.(bool)
+			if !ok {
+				return t, fmt.Errorf("tracing.propagate must be a boolean: %v", v)
+			}
+			t.Propagate = b
+		default:
+			return t, fmt.Errorf("unknown tracing key: %q", k)
+		}
+	}
+	return t, nil
 }
 
 func parseTags(v any) ([]string, error) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math/rand/v2"
 	"net/http"
 	"slices"
@@ -18,11 +19,14 @@ import (
 	"github.com/fujiwara/xk6-s3/internal/client"
 	"github.com/fujiwara/xk6-s3/internal/data"
 	"github.com/fujiwara/xk6-s3/internal/metrics"
+	"github.com/fujiwara/xk6-s3/internal/tracing"
 	"github.com/grafana/sobek"
 	"go.k6.io/k6/v2/js/common"
 	"go.k6.io/k6/v2/js/modules"
 	"go.k6.io/k6/v2/lib"
 	k6metrics "go.k6.io/k6/v2/metrics"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 // Result is the result of an operation returned to JavaScript.
@@ -102,9 +106,10 @@ func (c *Client) throw(err error) {
 // vuEnv is the VU state captured on the JavaScript goroutine at the start of
 // an operation, so that it can be used from other goroutines.
 type vuEnv struct {
-	ctx   context.Context
-	state *lib.State
-	tags  k6metrics.TagsAndMeta
+	ctx    context.Context
+	state  *lib.State
+	tags   k6metrics.TagsAndMeta
+	tracer trace.TracerProvider
 }
 
 // env captures the VU state. It throws in the init context.
@@ -113,7 +118,11 @@ func (c *Client) env() vuEnv {
 	if state == nil {
 		c.throw(errors.New("S3 operations cannot be called in the init context"))
 	}
-	return vuEnv{ctx: c.vu.Context(), state: state, tags: state.Tags.GetCurrentValues()}
+	var tp trace.TracerProvider = noop.NewTracerProvider()
+	if state.TracerProvider != nil {
+		tp = tracing.Adapt(state.TracerProvider)
+	}
+	return vuEnv{ctx: c.vu.Context(), state: state, tags: state.Tags.GetCurrentValues(), tracer: tp}
 }
 
 // client returns the SDK client of the VU, creating it on the first call.
@@ -121,7 +130,7 @@ func (c *Client) env() vuEnv {
 // data_received are recorded and the k6 TLS options apply.
 func (c *Client) client(env vuEnv) *awss3.Client {
 	c.sdkOnce.Do(func() {
-		c.sdk = client.New(c.cfg, &http.Client{Transport: env.state.Transport})
+		c.sdk = client.New(c.cfg, &http.Client{Transport: env.state.Transport}, tracing.SDK(env.tracer))
 	})
 	return c.sdk
 }
@@ -157,7 +166,7 @@ func (c *Client) parallelClient(env vuEnv, concurrency int) *awss3.Client {
 	if c.parallelTransport != nil {
 		c.parallelTransport.CloseIdleConnections()
 	}
-	c.parallel = client.New(c.cfg, &http.Client{Transport: t})
+	c.parallel = client.New(c.cfg, &http.Client{Transport: t}, tracing.SDK(env.tracer))
 	c.parallelTransport = t
 	c.parallelConcurrency = concurrency
 	return c.parallel
@@ -209,6 +218,7 @@ func (c *Client) measure(env vuEnv, o op, fn func(ctx context.Context) (opOutput
 	}
 
 	start := time.Now()
+	ctx, span := c.startSpan(env, ctx, o, start)
 	out, err := fn(ctx)
 	duration := time.Since(start)
 
@@ -255,7 +265,8 @@ func (c *Client) measure(env vuEnv, o op, fn func(ctx context.Context) (opOutput
 			c.warn(env, o, res)
 		}
 	}
-	c.emit(env, mr)
+	span = c.endSpan(env, span, o, res, start, start.Add(duration))
+	c.emit(env, span, mr)
 	return res
 }
 
@@ -266,12 +277,21 @@ func responseStatus(md middleware.Metadata) int {
 	return 0
 }
 
-func (c *Client) emit(env vuEnv, r metrics.Result) {
+func (c *Client) emit(env vuEnv, span trace.Span, r metrics.Result) {
 	opts := metrics.TagOptions{
 		Bucket:    c.cfg.HasTag(client.TagBucket),
 		SizeClass: c.cfg.HasTag(client.TagSizeClass),
 	}
-	if samples := c.root.metrics.Samples(env.tags, opts, r); samples != nil {
+	tags := env.tags
+	if sc := span.SpanContext(); sc.IsValid() {
+		// Link the samples to the trace, as k6 does for traced HTTP requests.
+		tags.Metadata = maps.Clone(tags.Metadata)
+		if tags.Metadata == nil {
+			tags.Metadata = map[string]string{}
+		}
+		tags.Metadata["trace_id"] = sc.TraceID().String()
+	}
+	if samples := c.root.metrics.Samples(tags, opts, r); samples != nil {
 		k6metrics.PushIfNotDone(env.ctx, env.state.Samples, samples)
 	}
 }
