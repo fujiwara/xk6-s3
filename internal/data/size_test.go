@@ -4,6 +4,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -21,9 +22,6 @@ func TestParseBytes(t *testing.T) {
 		{"1.5MiB", 3 << 19},
 		{"2GiB", 2 << 30},
 		{"1TiB", 1 << 40},
-		{"10KB", 10_000},
-		{"10MB", 10_000_000},
-		{"1GB", 1_000_000_000},
 		{" 8 MiB ", 8 << 20},
 	}
 	for _, tt := range tests {
@@ -40,6 +38,23 @@ func TestParseBytes(t *testing.T) {
 	for _, in := range []string{"", "MiB", "-1", "1XB", "1.2.3KiB", "10000000TiB", "1e3"} {
 		if got, err := ParseBytes(in); err == nil {
 			t.Errorf("ParseBytes(%q) = %d, want error", in, got)
+		}
+	}
+}
+
+func TestParseBytesAmbiguousUnits(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"10KB", "use KiB"},
+		{"10MB", "use MiB"},
+		{"1gb", "use GiB"},
+		{"1TB", "use TiB"},
+		{"10M", "use MiB"},
+		{"1k", "use KiB"},
+	}
+	for _, tt := range tests {
+		_, err := ParseBytes(tt.in)
+		if err == nil || !strings.Contains(err.Error(), tt.want) || !strings.Contains(err.Error(), "ambiguous") {
+			t.Errorf("ParseBytes(%q) error = %v, want %q", tt.in, err, tt.want)
 		}
 	}
 }

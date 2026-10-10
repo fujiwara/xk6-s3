@@ -16,19 +16,25 @@ const MaxObjectSize int64 = 5 << 40
 var units = map[string]int64{
 	"":    1,
 	"b":   1,
-	"kb":  1000,
-	"mb":  1000 * 1000,
-	"gb":  1000 * 1000 * 1000,
-	"tb":  1000 * 1000 * 1000 * 1000,
 	"kib": 1 << 10,
 	"mib": 1 << 20,
 	"gib": 1 << 30,
 	"tib": 1 << 40,
 }
 
-// ParseBytes parses a byte size such as "1048576", "512KiB", "1.5MiB" or "10MB".
-// Binary units (KiB, MiB, ...) are powers of 1024 and SI units (KB, MB, ...)
-// are powers of 1000. Units are case-insensitive.
+// ambiguousUnits are rejected because tools disagree on them: SI defines
+// them as powers of 1000, while warp, for example, treats them as powers of
+// 1024.
+var ambiguousUnits = map[string]string{
+	"k": "KiB", "kb": "KiB",
+	"m": "MiB", "mb": "MiB",
+	"g": "GiB", "gb": "GiB",
+	"t": "TiB", "tb": "TiB",
+}
+
+// ParseBytes parses a byte size such as "1048576", "512KiB" or "1.5MiB".
+// Units are powers of 1024 and case-insensitive. Ambiguous units such as
+// "MB" are rejected.
 func ParseBytes(s string) (int64, error) {
 	t := strings.TrimSpace(s)
 	i := strings.IndexFunc(t, func(r rune) bool {
@@ -40,6 +46,9 @@ func ParseBytes(s string) (int64, error) {
 	num, unit := t[:i], strings.ToLower(strings.TrimSpace(t[i:]))
 	mul, ok := units[unit]
 	if !ok {
+		if alt, ok := ambiguousUnits[unit]; ok {
+			return 0, fmt.Errorf("invalid size %q: %q is ambiguous, use %s (powers of 1024) or a number of bytes", s, t[i:], alt)
+		}
 		return 0, fmt.Errorf("invalid size %q: unknown unit %q", s, t[i:])
 	}
 	if n, err := strconv.ParseInt(num, 10, 64); err == nil {

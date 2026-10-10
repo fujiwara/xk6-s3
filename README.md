@@ -184,7 +184,7 @@ The first few failures of each operation type are logged as warnings with the re
 
 `size` accepts:
 
-- a number of bytes, or a string with a unit: `"512KiB"`, `"1.5MiB"`, `"10MB"` (`KiB`, `MiB`, ... are powers of 1024, `KB`, `MB`, ... are powers of 1000)
+- a number of bytes, or a string with a binary unit: `"512KiB"`, `"1.5MiB"`, `"2GiB"`. Units are case-insensitive. Ambiguous units such as `KB` and `MB` are rejected, because tools disagree on them (powers of 1000 in SI, powers of 1024 in warp)
 - `{ dist: "uniform", min, max }`
 - `{ dist: "lognormal", median, sigma }` (`sigma` of the underlying normal distribution, capped at 5TiB)
 - `{ dist: "choice", values: [{ size, weight }, ...] }`
