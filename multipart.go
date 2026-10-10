@@ -108,7 +108,7 @@ func (u *multipartUpload) run(ctx context.Context) (opOutput, error) {
 
 	completed, failed := u.uploadParts(ctx, uploadID)
 	if failed != nil {
-		u.abort(uploadID)
+		u.abort(ctx, uploadID)
 		res := &Result{}
 		res.setError(failed)
 		return opOutput{bytes: -1, size: -1, result: res}, errors.New(failed.Error)
@@ -123,7 +123,7 @@ func (u *multipartUpload) run(ctx context.Context) (opOutput, error) {
 		MultipartUpload: &types.CompletedMultipartUpload{Parts: completed},
 	})
 	if err != nil {
-		u.abort(uploadID)
+		u.abort(ctx, uploadID)
 		return noBody, err
 	}
 	return opOutput{metadata: out.ResultMetadata, bytes: u.size, size: -1}, nil
@@ -220,8 +220,8 @@ func (u *multipartUpload) uploadPart(env vuEnv, uploadID *string, i int) (types.
 
 // abort aborts the upload. It runs even after the VU context is canceled,
 // so that incomplete uploads are not left behind at the end of the test.
-func (u *multipartUpload) abort(uploadID *string) {
-	ctx, cancel := u.withTimeout(context.WithoutCancel(u.env.ctx))
+func (u *multipartUpload) abort(ctx context.Context, uploadID *string) {
+	ctx, cancel := u.withTimeout(context.WithoutCancel(ctx))
 	defer cancel()
 	if _, err := u.sdk.AbortMultipartUpload(ctx, &awss3.AbortMultipartUploadInput{
 		Bucket:   aws.String(u.bucket),

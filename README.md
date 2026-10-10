@@ -135,6 +135,7 @@ Create clients in the init context. The configuration is validated there, and th
 | `timeout` | `60s` | Timeout per operation. A duration string or milliseconds |
 | `maxAttempts` | `1` | Maximum attempts including SDK retries. Retries are disabled by default |
 | `tags` | `[]` | Optional metric tags to enable: `bucket`, `size_class` |
+| `tracing` | `{ sampleRate: 0.01, propagate: false }` | Tracing of operations. See [Tracing](#tracing) |
 
 Unknown keys are rejected. The default values from environment variables are read from the environment of the k6 process, not from `-e` / `__ENV`.
 
@@ -224,6 +225,23 @@ $ OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION=base2_exponential_buc
 ```
 
 The Rate metric `s3_op_errors` is exported as counters by k6 (e.g. `s3_op_errors.total`).
+
+## Tracing
+
+Operations are traced with OpenTelemetry when k6 sends traces with `--traces-output` (or `K6_TRACES_OUTPUT`):
+
+```console
+$ ./k6 run --traces-output=otel=http://localhost:4318,proto=http script.js
+```
+
+Each traced operation has a span named `s3.<op>` (such as `s3.put` or `s3.put_multipart`) with attributes such as `aws.s3.bucket`, `aws.s3.key`, `http.response.status_code`, `aws.request_id` and `k6.scenario`. The spans of aws-sdk-go-v2 (`S3.PutObject`, attempts, signing, the HTTP request, ...) are its children, and the parts of a multipart upload are children of `s3.put_multipart`. The metric samples of a traced operation have the trace ID in the `trace_id` metadata, as k6 does for traced HTTP requests.
+
+The `tracing` option of `s3.Client` controls it:
+
+- `sampleRate`: the ratio of traced operations, from `0` to `1` (default `0.01`). Failed operations are always traced: an operation that was not sampled gets its span after it fails, without the SDK spans.
+- `propagate`: adds the W3C `traceparent` header to the requests of traced operations, to join the traces of the server (default `false`). The header is added after signing, so the signature is the same as without it.
+
+Without `--traces-output`, no spans are created.
 
 ## Request format
 

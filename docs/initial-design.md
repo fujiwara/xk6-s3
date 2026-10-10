@@ -10,7 +10,7 @@ xk6-s3は、aws-sdk-go-v2を薄くラップしたk6のJavaScript拡張で、S3�
 
 ## スコープ
 
-初版(v0.1)は機能リストの【必須】項目に限定する。トレースは伝播も含めて対象外とする。
+初版(v0.1)は機能リストの【必須】項目に限定する。トレースはv0.1では対象外とし、v0.1.0のリリース後に追加した(トレースの節を参照)。
 
 | 区分 | 初版に含む | 次版以降 |
 | --- | --- | --- |
@@ -18,7 +18,7 @@ xk6-s3は、aws-sdk-go-v2を薄くラップしたk6のJavaScript拡張で、S3�
 | 操作 | Put / Get / Head / Delete、DeleteObjects、ListObjectsV2、バケット作成・削除、マルチパートアップロード | Range GET、CopyObject、条件付き・バージョニング・タグ |
 | データ | サイズ指定と分布、Go側でのボディ生成と読み捨て | 圧縮率指定、読み出し内容の検証 |
 | キー・データセット | 実行IDつきプレフィックス、並列プリロード、プレフィックス一括削除 | Zipf分布などのアクセス偏り |
-| 計測 | k6組み込み+自前メトリクス、エラー分類、タグ制御 | トレース、パート単位以上の詳細タイミング |
+| 計測 | k6組み込み+自前メトリクス、エラー分類、タグ制御、OpenTelemetryトレース(v0.1.0の後に追加) | パート単位以上の詳細タイミング |
 | API・配布 | 同期API、プリセットシナリオ、k6互換性の明記とCI | 非同期API、組み込み済みバイナリ配布 |
 
 ## アーキテクチャ
@@ -171,6 +171,16 @@ k6組み込みメトリクスと自前メトリクスを併用する。SDKのHTT
 - 付与しない: キー名、リクエストID(カーディナリティ爆発の防止)
 
 OTel出力ではTrendがHistogramに変換される。k6はバケット境界を指定しないため、OTel SDKの既定の境界(0, 5, 10, 25, … 10000 ms)になり、低レイテンシの操作では分解能が足りない(ローカルのversitygwではHEADがすべて0〜5msのバケットに入った)。OTel標準の環境変数 `OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION=base2_exponential_bucket_histogram` で指数ヒストグラムに切り替えられることを確認したため、バックエンドが対応していればこれを推奨し、READMEに記載する。RateはOTel出力ではカウンタ(`s3_op_errors.total` など)に変換される。
+
+## トレース
+
+k6の `--traces-output`(`K6_TRACES_OUTPUT`)で作られるTracerProviderを、VU状態(`lib.State.TracerProvider`)から使う。拡張は送信先の設定を持たず、k6が指定されていなければ何もしない。
+
+- **span**: 計測する操作ごとに `s3.<op>` のspanを作り、aws-sdk-go-v2のspan(`S3.PutObject`、試行、署名、HTTPリクエストなど)をその子にする。SDKのspanは、親のspanが記録中のときだけ作るTracerProviderをSDKに渡して制御する。マルチパートの各パートとAbortは `s3.put_multipart` の子とする
+- **属性**: `xk6.s3.op`、`aws.s3.bucket`、`aws.s3.key`、`xk6.s3.size`、`xk6.s3.bytes`、`http.response.status_code`、`aws.request_id`、`error.type`(error_kind)、`aws.s3.error_code`、`k6.scenario`、`k6.vu`
+- **サンプリング**: k6のTracerProviderは全件をサンプリングするため、拡張側で `tracing.sampleRate`(既定0.01)の比率でトップレベルの操作を選ぶ。入れ子の操作(パートなど)は親に従う。サンプリングされなかった操作が失敗した場合は、終了後に開始・終了時刻を指定してspanを作り、失敗を必ず記録する(SDKのspanは付かない)
+- **伝搬**: `tracing.propagate` が有効なとき、トレースした操作のリクエストにW3C `traceparent` を付ける。署名の後に付けるため、署名の計算は伝搬しない場合と変わらない。既定では付けず、リクエストの形式を実クライアントと同じに保つ
+- **メトリクスとの関連付け**: トレースした操作のサンプルには、k6のHTTPトレースと同じく `trace_id` をメタデータ(インデックスされない)として付ける
 
 ## エラー処理
 

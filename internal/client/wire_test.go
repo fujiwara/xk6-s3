@@ -74,7 +74,7 @@ func testConfig(endpoint string, m map[string]any) Config {
 
 func putObject(t *testing.T, cfg Config, hc *http.Client, body []byte) {
 	t.Helper()
-	c := New(cfg, hc)
+	c := New(cfg, hc, nil)
 	_, err := c.PutObject(context.Background(), &s3.PutObjectInput{
 		Bucket:            aws.String("bucket"),
 		Key:               aws.String("key"),
