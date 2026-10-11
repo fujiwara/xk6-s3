@@ -247,15 +247,7 @@ There is no practical difference in measuring server performance. In a compariso
 
 ## Development
 
-```console
-$ make test   # unit tests
-$ make build  # build ./k6 with this extension
-$ make e2e    # E2E tests and examples against versitygw (posix backend) over HTTP and HTTPS; requires docker
-$ make credits # regenerate CREDITS for the k6 binary
-$ make generate # regenerate docs/api.md and index.d.ts from the Go source
-```
-
-The JavaScript API is defined by the exported methods of `Client`, the options structs of the methods (`<Method>Options`), `Result` and `internal/client.Config`. Their doc comments and struct tags (see [internal/jsobj](internal/jsobj/jsobj.go)) are the documentation. `go test` fails when the generated files are out of date.
+See [AGENTS.md](AGENTS.md).
 
 ## Compatibility
 
@@ -283,7 +275,7 @@ The `xk6-s3` binaries in [Releases](https://github.com/fujiwara/xk6-s3/releases)
 $ go -C cmd/xk6-s3 build -mod=vendor .
 ```
 
-[CREDITS](CREDITS) lists the licenses and notices of the modules in the binary, and is included in the release archives. Regenerate it with `make credits`, which uses [gocredits](https://github.com/Songmu/gocredits), when dependencies change. CI fails when CREDITS is out of date.
+[CREDITS](CREDITS) lists the licenses and notices of the modules in the binary, and is included in the release archives.
 
 ## Author
 
