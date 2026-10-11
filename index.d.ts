@@ -327,7 +327,7 @@ declare module "k6/x/s3" {
     /**
      * The part size.
      *
-     * A size such as `"5MiB"` or a number of bytes, but not a size distribution. At least 1 bytes.
+     * A size such as `"5MiB"` or a number of bytes, but not a size distribution. At least 1 byte.
      *
      * Default: `"5MiB"`
      */

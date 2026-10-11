@@ -14,48 +14,53 @@ import (
 	"unicode/utf8"
 )
 
-// api is the JavaScript API of the module.
-type api struct {
-	runID     method
-	clientDoc string
-	methods   []method
-	// types are the interfaces in the order of appearance: the client
+// API is the JavaScript API of the module. The fields are exported for
+// the templates.
+type API struct {
+	RunID     Method
+	ClientDoc string
+	Methods   []Method
+	// Types are the interfaces in the order of appearance: the client
 	// config, the options and Result.
-	types []*iface
+	Types []*Interface
 }
 
-type method struct {
-	name    string
-	params  []param
-	returns string
-	doc     string
-	// options is the options interface, or nil.
-	options *iface
+// Method is a function or a method exposed to JavaScript.
+type Method struct {
+	Name    string
+	Params  []Param
+	Returns string
+	Doc     string
+	// Options is the options interface, or nil.
+	Options *Interface
 }
 
-type param struct {
-	name     string
-	typ      string
-	optional bool
+// Param is a parameter of a method.
+type Param struct {
+	Name     string
+	Type     string
+	Optional bool
 }
 
-type iface struct {
-	name   string
-	doc    string
-	fields []field
-	// options reports whether the fields are optional keys of an object
+// Interface is an object type.
+type Interface struct {
+	Name   string
+	Doc    string
+	Fields []Field
+	// Options reports whether the fields are optional keys of an object
 	// passed to the module, rather than the fields of a result.
-	options bool
+	Options bool
 }
 
-type field struct {
-	name string
-	typ  string
-	doc  string
-	// def is the default in Markdown, or empty.
-	def string
-	// note describes the accepted values.
-	note string
+// Field is a key of an object type.
+type Field struct {
+	Name string
+	Type string
+	Doc  string
+	// Default is the default in Markdown, or empty.
+	Default string
+	// Note describes the accepted values.
+	Note string
 }
 
 // pkg is a parsed Go package.
@@ -127,7 +132,7 @@ func tsName(goName string) string {
 	return goName
 }
 
-func build(root string) (*api, error) {
+func build(root string) (*API, error) {
 	s3, err := load(root)
 	if err != nil {
 		return nil, err
@@ -136,16 +141,16 @@ func build(root string) (*api, error) {
 	if err != nil {
 		return nil, err
 	}
-	b := &builder{a: &api{}, seen: map[string]*iface{}}
+	b := &builder{a: &API{}, seen: map[string]*Interface{}}
 
 	runID := find(s3.methods["ModuleInstance"], "RunID")
 	if runID == nil {
 		return nil, fmt.Errorf("ModuleInstance.RunID not found")
 	}
-	if b.a.runID, err = b.method(s3, runID, "runId"); err != nil {
+	if b.a.RunID, err = b.method(s3, runID, "runId"); err != nil {
 		return nil, err
 	}
-	if b.a.clientDoc, err = docOf(s3, "Client"); err != nil {
+	if b.a.ClientDoc, err = docOf(s3, "Client"); err != nil {
 		return nil, err
 	}
 	if _, err := b.iface(cl, "Config", true); err != nil {
@@ -162,7 +167,7 @@ func build(root string) (*api, error) {
 		if err != nil {
 			return nil, err
 		}
-		b.a.methods = append(b.a.methods, m)
+		b.a.Methods = append(b.a.Methods, m)
 	}
 	if _, err := b.iface(s3, "Result", false); err != nil {
 		return nil, err
@@ -171,9 +176,9 @@ func build(root string) (*api, error) {
 }
 
 type builder struct {
-	a *api
+	a *API
 	// seen maps the qualified Go names of the converted structs.
-	seen map[string]*iface
+	seen map[string]*Interface
 }
 
 func find(decls []*ast.FuncDecl, name string) *ast.FuncDecl {
@@ -197,29 +202,29 @@ func docOf(p *pkg, name string) (string, error) {
 }
 
 // method converts a method exposed to JavaScript as name.
-func (b *builder) method(p *pkg, d *ast.FuncDecl, name string) (method, error) {
-	m := method{name: name, doc: jsDoc(d.Name.Name, d.Doc.Text())}
+func (b *builder) method(p *pkg, d *ast.FuncDecl, name string) (Method, error) {
+	m := Method{Name: name, Doc: jsDoc(d.Name.Name, d.Doc.Text())}
 	if d.Doc == nil {
 		return m, fmt.Errorf("method %s has no doc comment", d.Name.Name)
 	}
 	for _, f := range d.Type.Params.List {
 		for _, n := range f.Names {
-			prm := param{name: n.Name}
+			prm := Param{Name: n.Name}
 			switch typ := exprString(f.Type); {
 			case n.Name == "options" && typ == "sobek.Value":
 				opts, err := b.iface(p, d.Name.Name+"Options", true)
 				if err != nil {
 					return m, fmt.Errorf("options of %s: %w", d.Name.Name, err)
 				}
-				prm.typ, prm.optional, m.options = opts.name, true, opts
+				prm.Type, prm.Optional, m.Options = opts.Name, true, opts
 			default:
 				t, ok := paramTypes[typ]
 				if !ok {
 					return m, fmt.Errorf("%s: unsupported parameter type %s of %s", d.Name.Name, typ, n.Name)
 				}
-				prm.typ = t
+				prm.Type = t
 			}
-			m.params = append(m.params, prm)
+			m.Params = append(m.Params, prm)
 		}
 	}
 	if d.Type.Results == nil || len(d.Type.Results.List) != 1 {
@@ -230,7 +235,7 @@ func (b *builder) method(p *pkg, d *ast.FuncDecl, name string) (method, error) {
 	if !ok {
 		return m, fmt.Errorf("%s: unsupported result type %s", d.Name.Name, typ)
 	}
-	m.returns = t
+	m.Returns = t
 	return m, nil
 }
 
@@ -244,7 +249,7 @@ var paramTypes = map[string]string{
 }
 
 // iface converts a struct of p to an interface and adds it to the api once.
-func (b *builder) iface(p *pkg, goName string, options bool) (*iface, error) {
+func (b *builder) iface(p *pkg, goName string, options bool) (*Interface, error) {
 	ts, ok := p.types[goName]
 	if !ok {
 		return nil, fmt.Errorf("type %s not found", goName)
@@ -261,9 +266,9 @@ func (b *builder) iface(p *pkg, goName string, options bool) (*iface, error) {
 	if it, ok := b.seen[key]; ok {
 		return it, nil
 	}
-	it := &iface{name: tsName(goName), doc: doc, options: options}
+	it := &Interface{Name: tsName(goName), Doc: doc, Options: options}
 	b.seen[key] = it
-	b.a.types = append(b.a.types, it)
+	b.a.Types = append(b.a.Types, it)
 	for _, f := range structType.Fields.List {
 		if f.Tag == nil {
 			continue
@@ -281,16 +286,16 @@ func (b *builder) iface(p *pkg, goName string, options bool) (*iface, error) {
 		if f.Doc == nil {
 			return nil, fmt.Errorf("field %s.%s has no doc comment", goName, goField)
 		}
-		fd := field{name: js, doc: jsDoc(goField, f.Doc.Text())}
-		if fd.typ, fd.note, err = b.fieldType(p, f.Type, st, options); err != nil {
+		fd := Field{Name: js, Doc: jsDoc(goField, f.Doc.Text())}
+		if fd.Type, fd.Note, err = b.fieldType(p, f.Type, st, options); err != nil {
 			return nil, fmt.Errorf("field %s.%s: %w", goName, goField, err)
 		}
 		if !options {
 			// Notes describe the accepted values, not the values of results.
-			fd.note = ""
+			fd.Note = ""
 		}
-		fd.def = defaultOf(st, fd.typ)
-		it.fields = append(it.fields, fd)
+		fd.Default = defaultOf(st, fd.Type)
+		it.Fields = append(it.Fields, fd)
 	}
 	return it, nil
 }
@@ -353,7 +358,11 @@ func (b *builder) fieldType(p *pkg, expr ast.Expr, tag reflect.StructTag, option
 	case "data.Fixed":
 		n := "A size such as `\"5MiB\"` or a number of bytes, but not a size distribution."
 		if lo, ok := tag.Lookup("min"); ok {
-			n += " At least " + lo + " bytes."
+			unit := " bytes."
+			if lo == "1" {
+				unit = " byte."
+			}
+			n += " At least " + lo + unit
 		}
 		return "string | number", n, nil
 	}
@@ -363,7 +372,7 @@ func (b *builder) fieldType(p *pkg, expr ast.Expr, tag reflect.StructTag, option
 			if err != nil {
 				return "", "", err
 			}
-			return it.name, "", nil
+			return it.Name, "", nil
 		}
 	}
 	return "", "", fmt.Errorf("unsupported type %s (set a ts tag)", goType)

@@ -2,7 +2,8 @@
 // TypeScript declarations (index.d.ts) of the k6/x/s3 module from the Go
 // source: the exported methods of Client, the options structs of the
 // methods, Result and the client Config, with their doc comments and the
-// struct tags interpreted by internal/jsobj.
+// struct tags interpreted by internal/jsobj. The layout of the files is in
+// templates/.
 //
 // Run it with go generate in the repository root.
 package main
@@ -39,8 +40,16 @@ func generate(root string) ([]file, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []file{
-		{"docs/api.md", markdown(a)},
-		{"index.d.ts", typescript(a)},
-	}, nil
+	var files []file
+	for path, tmpl := range map[string]string{
+		"docs/api.md": "api.md.tmpl",
+		"index.d.ts":  "index.d.ts.tmpl",
+	} {
+		content, err := render(a, tmpl)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, file{path, content})
+	}
+	return files, nil
 }

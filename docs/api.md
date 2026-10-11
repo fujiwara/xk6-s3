@@ -274,7 +274,7 @@ defaults follow the aws-sdk-go-v2 upload manager.
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
-| `partSize` | `string \| number` | `"5MiB"` | The part size. A size such as `"5MiB"` or a number of bytes, but not a size distribution. At least 1 bytes. |
+| `partSize` | `string \| number` | `"5MiB"` | The part size. A size such as `"5MiB"` or a number of bytes, but not a size distribution. At least 1 byte. |
 | `concurrency` | `number` | `5` | The number of parts uploaded at once. An integer at least 1. |
 
 ### `Result`
