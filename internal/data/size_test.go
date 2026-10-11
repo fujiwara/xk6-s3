@@ -210,3 +210,18 @@ func TestSizeClass(t *testing.T) {
 		}
 	}
 }
+
+func TestFixedDecodeJS(t *testing.T) {
+	var f Fixed
+	if err := f.DecodeJS("5MiB"); err != nil || f != 5<<20 {
+		t.Errorf("DecodeJS(5MiB) = %d, %v", f, err)
+	}
+	if err := f.DecodeJS(int64(10)); err != nil || f != 10 {
+		t.Errorf("DecodeJS(10) = %d, %v", f, err)
+	}
+	for _, v := range []any{"5MB", int64(-1), map[string]any{"dist": "uniform", "min": int64(1), "max": int64(2)}} {
+		if err := f.DecodeJS(v); err == nil {
+			t.Errorf("DecodeJS(%v) did not fail", v)
+		}
+	}
+}

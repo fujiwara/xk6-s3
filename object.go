@@ -9,12 +9,11 @@ import (
 	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/fujiwara/xk6-s3/internal/data"
 	"github.com/fujiwara/xk6-s3/internal/metrics"
-	"github.com/grafana/sobek"
 )
 
 // PutObject uploads an object of the given size (a number, a string with a
 // unit or a size distribution) with a body generated on the Go side.
-func (c *Client) PutObject(bucket, key string, size sobek.Value) *Result {
+func (c *Client) PutObject(bucket, key string, size Size) *Result {
 	rt := c.vu.Runtime()
 	requireName(rt, "bucket", bucket)
 	requireName(rt, "key", key)

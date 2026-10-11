@@ -119,78 +119,19 @@ export default function () {
 }
 ```
 
-### `new s3.Client(config)`
+### API
 
-Create clients in the init context. The configuration is validated there, and the underlying SDK client is created in each VU on its first operation. Requests are sent through the VU's k6 HTTP transport, so `data_sent` / `data_received` are recorded and the k6 TLS and connection options (`insecureSkipTLSVerify`, `tlsAuth`, `noConnectionReuse`, ...) apply.
+See the [API reference](docs/api.md) for the client configuration, the operations, their options and results. S3 and network errors do not throw; each operation returns a result object, so that an error does not abort the iteration.
 
-| Key | Default | Description |
-| --- | --- | --- |
-| `endpoint` | `AWS_ENDPOINT_URL_S3`, then `AWS_ENDPOINT_URL` | Endpoint URL (`http://` or `https://`). Required unless set by the environment variables |
-| `region` | `AWS_REGION`, then `AWS_DEFAULT_REGION`, then `us-east-1` | Region for signing. Also sent as the LocationConstraint of `createBucket` unless `us-east-1` |
-| `accessKey` / `secretKey` / `sessionToken` | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` | Static credentials |
-| `pathStyle` | `true` | Use path-style addressing |
-| `checksum` | `when_supported` | `when_supported` / `when_required`. Applied to both request checksum calculation and response checksum validation |
-| `checksumAlgorithm` | (SDK default, CRC32) | `CRC32` / `CRC32C` / `CRC64NVME` / `SHA1` / `SHA256`. Cannot be used with `when_required` |
-| `payloadSigning` | `auto` | `auto` / `unsigned` / `signed`. See [Request format](#request-format) |
-| `timeout` | `60s` | Timeout per operation. A duration string or milliseconds |
-| `maxAttempts` | `1` | Maximum attempts including SDK retries. Retries are disabled by default |
-| `tags` | `[]` | Optional metric tags to enable: `bucket`, `size_class` |
-| `tracing` | `{ sampleRate: 0.01, propagate: false }` | Tracing of operations. See [Tracing](#tracing) |
+Operations that send requests concurrently (`putObjectMultipart`, `preload` and `deletePrefix`) use a copy of the VU's k6 transport with idle connection limits raised to the concurrency, so that connections are reused beyond `batchPerHost`.
 
-Unknown keys are rejected. The default values from environment variables are read from the environment of the k6 process, not from `-e` / `__ENV`.
+The API reference and the TypeScript declarations ([index.d.ts](index.d.ts)) are generated from the Go source. For completion and type checking in an editor, add the declarations to `jsconfig.json` (or `tsconfig.json`) of your scripts:
 
-### Operations
-
-| Method | Description |
-| --- | --- |
-| `putObject(bucket, key, size)` | Upload an object with a body generated on the Go side |
-| `putObjectMultipart(bucket, key, size, options?)` | Upload an object with a multipart upload. The upload is aborted on failure |
-| `getObject(bucket, key)` | Download an object. The body is discarded on the Go side |
-| `headObject(bucket, key)` | Get object metadata |
-| `deleteObject(bucket, key)` | Delete an object |
-| `deleteObjects(bucket, keys, options?)` | Delete up to 1000 objects with one DeleteObjects request |
-| `listObjects(bucket, prefix, options?)` | List objects with ListObjectsV2 |
-| `createBucket(bucket)` / `deleteBucket(bucket)` | Create or delete a bucket |
-| `preload(bucket, prefix, count, size, options?)` | Upload `count` objects named `prefix + "0"`, ... concurrently, for `setup()` |
-| `deletePrefix(bucket, prefix, options?)` | Delete all objects under a non-empty prefix concurrently, for `teardown()` |
-
-Options:
-
-- `putObjectMultipart`: `partSize` (default `"5MiB"`), `concurrency` (default `5`). The defaults follow the aws-sdk-go-v2 upload manager. As the upload manager does, the checksum algorithm is set on CreateMultipartUpload and UploadPart when `checksum` is `when_supported`, and the part checksums are sent with CompleteMultipartUpload. The `timeout` applies to each request.
-- `deleteObjects`: `quiet` (default `false`, as the S3 API and minio-go). The result is not `ok` when any object was not deleted, and has the first per-object error.
-- `listObjects`: `maxKeys` (default: server default), `maxPages` (default `1`, `0` for all pages), `delimiter` (default: none), `keys` (default `false`, return the listed keys in `keys` and the common prefixes in `prefixes`). Each request is measured as a `list` operation. Without `delimiter`, all objects under the prefix are listed. With `delimiter`, `count` and `keys` have only the objects, and the common prefixes are not counted. Note that `maxKeys` limits the objects and common prefixes together.
-- `preload` / `deletePrefix`: `concurrency` (default `16`). Each object operation is measured as `put` / `delete`.
-
-Operations that send requests concurrently use a copy of the VU's k6 transport with idle connection limits raised to the concurrency, so that connections are reused beyond `batchPerHost`.
-
-S3 and network errors do not throw. Each operation returns a result object, so that an error does not abort the iteration. Only script errors (invalid arguments, calls in the init context) throw.
-
-| Field | Description |
-| --- | --- |
-| `ok` | Whether the operation succeeded |
-| `status` | HTTP status code (0 for network errors) |
-| `bytes` | Body bytes sent or received |
-| `errorKind` | `s3`, `http`, `timeout`, `network`, `canceled` or `other`. Empty on success |
-| `errorCode` | S3 error code such as `NoSuchKey` or `SlowDown` (for `s3` errors) |
-| `error` | Error message. Empty on success |
-| `requestId` | `x-amz-request-id` of the response |
-| `count` | Objects listed, uploaded or deleted (`listObjects`, `deleteObjects`, `preload`, `deletePrefix`) |
-| `failed` | Objects that failed (`deleteObjects`, `preload`, `deletePrefix`) |
-| `keys` | Listed keys (`listObjects` with `keys: true`), otherwise `null` |
-| `prefixes` | Listed common prefixes (`listObjects` with `keys: true`), otherwise `null` |
-
-`preload` and `deletePrefix` are `ok` when no object failed, and report the first error.
-
-For example, to get the listed objects in order:
-
-```js
-const r = client.listObjects(bucket, prefix, { maxPages: 0, keys: true });
-for (const key of r.keys) {
-  client.getObject(bucket, key);
+```json
+{
+  "include": ["**/*.js", "path/to/index.d.ts"]
 }
 ```
-
-The first few failures of each operation type are logged as warnings with the request ID.
 
 ### Sizes
 
@@ -311,7 +252,10 @@ $ make test   # unit tests
 $ make build  # build ./k6 with this extension
 $ make e2e    # E2E tests and examples against versitygw (posix backend) over HTTP and HTTPS; requires docker
 $ make credits # regenerate CREDITS for the k6 binary
+$ make generate # regenerate docs/api.md and index.d.ts from the Go source
 ```
+
+The JavaScript API is defined by the exported methods of `Client`, the options structs of the methods (`<Method>Options`), `Result` and `internal/client.Config`. Their doc comments and struct tags (see [internal/jsobj](internal/jsobj/jsobj.go)) are the documentation. `go test` fails when the generated files are out of date.
 
 ## Compatibility
 

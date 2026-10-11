@@ -1,9 +1,13 @@
 package s3
 
 import (
+	"os"
+	"reflect"
 	"regexp"
+	"strings"
 	"testing"
 
+	"go.k6.io/k6/v2/js/common"
 	"go.k6.io/k6/v2/js/modulestest"
 )
 
@@ -59,6 +63,29 @@ func TestRunIDSharedAcrossVUs(t *testing.T) {
 		}
 		if got := v.String(); got != "shared" {
 			t.Errorf("s3.runId() = %q, want %q", got, "shared")
+		}
+	}
+}
+
+// TestDeclarations checks that index.d.ts, generated from the Go source by
+// internal/cmd/apidoc, declares everything exposed to JavaScript.
+func TestDeclarations(t *testing.T) {
+	b, err := os.ReadFile("index.d.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	decl := string(b)
+	rt := modulestest.NewRuntime(t)
+	for name := range New().NewModuleInstance(rt.VU).Exports().Named {
+		if !strings.Contains(decl, "export function "+name+"(") && !strings.Contains(decl, "export class "+name+" ") {
+			t.Errorf("export %s is not declared", name)
+		}
+	}
+	typ := reflect.TypeFor[*Client]()
+	for m := range typ.Methods() {
+		name := common.MethodName(typ, m)
+		if !strings.Contains(decl, "    "+name+"(") {
+			t.Errorf("method %s is not declared", name)
 		}
 	}
 }

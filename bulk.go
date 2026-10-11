@@ -14,9 +14,6 @@ import (
 	"github.com/grafana/sobek"
 )
 
-// defaultBulkConcurrency is the default concurrency of preload and deletePrefix.
-const defaultBulkConcurrency = 16
-
 // bulk runs object operations concurrently and aggregates their results.
 type bulk struct {
 	mu  sync.Mutex
@@ -77,24 +74,27 @@ func send[T any](ctx context.Context, jobs chan<- T, j T) bool {
 	}
 }
 
+// PreloadOptions are the options of preload.
+type PreloadOptions struct {
+	// Concurrency is the number of concurrent uploads.
+	Concurrency int64 `js:"concurrency" default:"16" min:"1"`
+}
+
 // Preload uploads count objects named prefix + "0" ... prefix + (count-1)
 // with the given size concurrently, for use in setup(). Each upload is
-// measured as a put operation. Options:
-//
-//   - concurrency: the number of concurrent uploads (default: 16)
+// measured as a put operation.
 //
 // The result has the number of uploaded objects in count, the number of
 // failed objects in failed, the total bytes in bytes and the first error.
-func (c *Client) Preload(bucket, prefix string, count int64, size, options sobek.Value) *Result {
+// It is ok when no object failed.
+func (c *Client) Preload(bucket, prefix string, count int64, size Size, options sobek.Value) *Result {
 	requireName(c.vu.Runtime(), "bucket", bucket)
 	if count < 0 {
 		c.throw(errors.New("count must not be negative"))
 	}
-	opts := c.options(options, "concurrency")
-	concurrency := c.intOption(opts, "concurrency", defaultBulkConcurrency)
-	if concurrency <= 0 {
-		c.throw(errors.New("concurrency must be positive"))
-	}
+	var opts PreloadOptions
+	c.decodeOptions(options, &opts)
+	concurrency := opts.Concurrency
 	sizer := c.sizer(size)
 	env := c.env()
 	sdk := c.parallelClient(env, int(concurrency))
@@ -118,23 +118,26 @@ func (c *Client) Preload(bucket, prefix string, count int64, size, options sobek
 	return b.result(env.ctx)
 }
 
+// DeletePrefixOptions are the options of deletePrefix.
+type DeletePrefixOptions struct {
+	// Concurrency is the number of concurrent deletions.
+	Concurrency int64 `js:"concurrency" default:"16" min:"1"`
+}
+
 // DeletePrefix deletes all objects whose keys start with prefix
 // concurrently, for use in teardown(). The prefix must not be empty. Each
 // ListObjectsV2 request is measured as a list operation and each deletion
-// as a delete operation. Options:
-//
-//   - concurrency: the number of concurrent deletions (default: 16)
+// as a delete operation.
 //
 // The result has the number of deleted objects in count, the number of
-// failed objects in failed and the first error.
+// failed objects in failed and the first error. It is ok when no object
+// failed.
 func (c *Client) DeletePrefix(bucket, prefix string, options sobek.Value) *Result {
 	requireName(c.vu.Runtime(), "bucket", bucket)
 	requireName(c.vu.Runtime(), "prefix", prefix)
-	opts := c.options(options, "concurrency")
-	concurrency := c.intOption(opts, "concurrency", defaultBulkConcurrency)
-	if concurrency <= 0 {
-		c.throw(errors.New("concurrency must be positive"))
-	}
+	var opts DeletePrefixOptions
+	c.decodeOptions(options, &opts)
+	concurrency := opts.Concurrency
 	env := c.env()
 	sdk := c.parallelClient(env, int(concurrency))
 

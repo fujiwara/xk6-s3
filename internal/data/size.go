@@ -143,6 +143,21 @@ func (c *Choice) Next(r *rand.Rand) int64 {
 	return c.Sizes[min(i, len(c.Sizes)-1)]
 }
 
+// DecodeJS implements jsobj.Decoder. It accepts a number of bytes or a
+// string with a unit, but not a size distribution.
+func (f *Fixed) DecodeJS(v any) error {
+	s, err := ParseSizer(v)
+	if err != nil {
+		return err
+	}
+	fixed, ok := s.(Fixed)
+	if !ok {
+		return errors.New("must be a fixed size")
+	}
+	*f = fixed
+	return nil
+}
+
 // ParseSizer parses a size specification exported from JavaScript:
 //
 //   - a number (bytes) or a string with a unit, e.g. "1MiB"

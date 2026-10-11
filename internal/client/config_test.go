@@ -2,6 +2,8 @@ package client
 
 import (
 	"maps"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -72,7 +74,7 @@ func TestParseConfigTracing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Tracing != (Tracing{SampleRate: DefaultSampleRate}) {
+	if cfg.Tracing != (Tracing{SampleRate: 0.01}) {
 		t.Errorf("default Tracing = %+v", cfg.Tracing)
 	}
 	base["tracing"] = map[string]any{"sampleRate": int64(1), "propagate": true}
@@ -86,7 +88,7 @@ func TestParseConfigTracing(t *testing.T) {
 	if cfg, err = ParseConfig(base, noEnv); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Tracing != (Tracing{SampleRate: DefaultSampleRate, Propagate: true}) {
+	if cfg.Tracing != (Tracing{SampleRate: 0.01, Propagate: true}) {
 		t.Errorf("Tracing = %+v", cfg.Tracing)
 	}
 }
@@ -226,18 +228,46 @@ func TestParseConfigErrors(t *testing.T) {
 		{base("maxAttempts", 1.5), "maxAttempts"},
 		{base("tags", "bucket"), "tags must be an array"},
 		{base("tags", []any{"key"}), "tags must contain only"},
-		{base("endpointUrl", "http://localhost"), "unknown config keys: [endpointUrl]"},
+		{base("endpointUrl", "http://localhost"), "unknown keys: [endpointUrl]"},
 		{base("tracing", true), "tracing must be an object"},
 		{base("tracing", map[string]any{"sampleRate": 1.5}), "tracing.sampleRate"},
 		{base("tracing", map[string]any{"sampleRate": -0.1}), "tracing.sampleRate"},
 		{base("tracing", map[string]any{"sampleRate": "1"}), "tracing.sampleRate"},
 		{base("tracing", map[string]any{"propagate": "yes"}), "tracing.propagate"},
-		{base("tracing", map[string]any{"rate": 1.0}), "unknown tracing key"},
+		{base("tracing", map[string]any{"rate": 1.0}), "unknown keys in tracing: [rate]"},
 	}
 	for _, tt := range tests {
 		_, err := ParseConfig(tt.m, noEnv)
 		if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 			t.Errorf("ParseConfig(%v) error = %v, want %q", tt.m, err, tt.wantErr)
 		}
+	}
+}
+
+// The struct tags of Config define the defaults and the allowed values, and
+// must agree with the constants used by the client.
+func TestConfigTags(t *testing.T) {
+	tag := func(typ reflect.Type, field, key string) string {
+		f, ok := typ.FieldByName(field)
+		if !ok {
+			t.Fatalf("no field %s", field)
+		}
+		return f.Tag.Get(key)
+	}
+	cfg := reflect.TypeFor[Config]()
+	if got := tag(cfg, "Region", "default"); got != DefaultRegion {
+		t.Errorf("Region default = %q, want %q", got, DefaultRegion)
+	}
+	if got := strings.Split(tag(cfg, "ChecksumAlgorithm", "enum"), ","); !slices.Equal(got, ChecksumAlgorithms) {
+		t.Errorf("ChecksumAlgorithm enum = %v, want %v", got, ChecksumAlgorithms)
+	}
+	if got, want := tag(cfg, "Checksum", "enum"), ChecksumWhenSupported+","+ChecksumWhenRequired; got != want {
+		t.Errorf("Checksum enum = %q, want %q", got, want)
+	}
+	if got, want := tag(cfg, "PayloadSigning", "enum"), PayloadSigningAuto+","+PayloadSigningUnsigned+","+PayloadSigningSigned; got != want {
+		t.Errorf("PayloadSigning enum = %q, want %q", got, want)
+	}
+	if got, want := tag(cfg, "Tags", "enum"), TagBucket+","+TagSizeClass; got != want {
+		t.Errorf("Tags enum = %q, want %q", got, want)
 	}
 }

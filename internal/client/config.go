@@ -4,11 +4,11 @@ package client
 import (
 	"errors"
 	"fmt"
-	"math"
 	"net/url"
 	"slices"
-	"sort"
 	"time"
+
+	"github.com/fujiwara/xk6-s3/internal/jsobj"
 )
 
 // Checksum modes. They are applied to both RequestChecksumCalculation and
@@ -39,35 +39,54 @@ const (
 // The first one is the SDK default.
 var ChecksumAlgorithms = []string{"CRC32", "CRC32C", "CRC64NVME", "SHA1", "SHA256"}
 
-// DefaultSampleRate is the default ratio of traced operations.
-const DefaultSampleRate = 0.01
-
-// Tracing is the tracing configuration.
+// Tracing is the tracing configuration. See the Tracing section of README.
 type Tracing struct {
-	// SampleRate is the ratio of operations traced with spans, in [0, 1].
-	// Failed operations are always traced.
-	SampleRate float64
-	// Propagate adds the W3C traceparent header to the requests of traced
+	// SampleRate is the ratio of operations traced with spans. Failed
+	// operations are always traced.
+	SampleRate float64 `js:"sampleRate" default:"0.01" min:"0" max:"1"`
+	// Propagate adds the W3C `traceparent` header to the requests of traced
 	// operations.
-	Propagate bool
+	Propagate bool `js:"propagate"`
 }
 
-// Config is the validated client configuration.
+// Config is the configuration of a client. Unknown keys are rejected. The
+// environment variables are read from the environment of the k6 process,
+// not from `-e` / `__ENV`.
 type Config struct {
-	Endpoint     string
-	Region       string
-	AccessKey    string
-	SecretKey    string
-	SessionToken string
-	PathStyle    bool
-	Checksum     string
-	// ChecksumAlgorithm is empty when not specified (the SDK default, CRC32).
-	ChecksumAlgorithm string
-	PayloadSigning    string
-	Timeout           time.Duration
-	MaxAttempts       int
-	Tags              []string
-	Tracing           Tracing
+	// Endpoint is the endpoint URL (`http://` or `https://`). Required unless
+	// set by the environment variables.
+	Endpoint string `js:"endpoint" env:"AWS_ENDPOINT_URL_S3,AWS_ENDPOINT_URL"`
+	// Region is the region for signing. It is also sent as the
+	// LocationConstraint of createBucket unless us-east-1.
+	Region string `js:"region" env:"AWS_REGION,AWS_DEFAULT_REGION" default:"us-east-1"`
+	// AccessKey is the access key ID. When neither accessKey nor secretKey
+	// is set, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_SESSION_TOKEN
+	// are used.
+	AccessKey string `js:"accessKey"`
+	// SecretKey is the secret access key.
+	SecretKey string `js:"secretKey"`
+	// SessionToken is the session token.
+	SessionToken string `js:"sessionToken"`
+	// PathStyle uses path-style addressing.
+	PathStyle bool `js:"pathStyle" default:"true"`
+	// Checksum is applied to both request checksum calculation and response
+	// checksum validation. See the Request format section of README.
+	Checksum string `js:"checksum" enum:"when_supported,when_required" default:"when_supported"`
+	// ChecksumAlgorithm is the request checksum algorithm. The SDK default
+	// (CRC32) if not set. Cannot be used with checksum when_required.
+	ChecksumAlgorithm string `js:"checksumAlgorithm" enum:"CRC32,CRC32C,CRC64NVME,SHA1,SHA256"`
+	// PayloadSigning selects how the payload is signed. See the Request
+	// format section of README.
+	PayloadSigning string `js:"payloadSigning" enum:"auto,unsigned,signed" default:"auto"`
+	// Timeout is the timeout of an operation.
+	Timeout time.Duration `js:"timeout" default:"60s"`
+	// MaxAttempts is the maximum number of attempts including SDK retries.
+	// Retries are disabled by default.
+	MaxAttempts int `js:"maxAttempts" default:"1" min:"1"`
+	// Tags are the optional metric tags to enable.
+	Tags []string `js:"tags" enum:"bucket,size_class"`
+	// Tracing is the tracing of operations.
+	Tracing Tracing `js:"tracing"`
 }
 
 // HTTPS reports whether the endpoint uses TLS.
@@ -81,106 +100,20 @@ func (c Config) HasTag(name string) bool {
 	return slices.Contains(c.Tags, name)
 }
 
-var configKeys = []string{
-	"endpoint", "region", "accessKey", "secretKey", "sessionToken", "pathStyle",
-	"checksum", "checksumAlgorithm", "payloadSigning", "timeout", "maxAttempts", "tags",
-	"tracing",
-}
-
 // ParseConfig validates a configuration object exported from JavaScript and
 // fills in the defaults. lookupEnv is used for the default endpoint, region
 // and credentials.
 func ParseConfig(m map[string]any, lookupEnv func(string) (string, bool)) (Config, error) {
-	cfg := Config{
-		PathStyle:      true,
-		Checksum:       ChecksumWhenSupported,
-		PayloadSigning: PayloadSigningAuto,
-		Timeout:        60 * time.Second,
-		MaxAttempts:    1,
-		Tracing:        Tracing{SampleRate: DefaultSampleRate},
-	}
-	var unknown []string
-	for k := range m {
-		if !slices.Contains(configKeys, k) {
-			unknown = append(unknown, k)
+	var cfg Config
+	errs := []error{jsobj.Decode(m, &cfg, lookupEnv)}
+	var tags []string
+	for _, tag := range cfg.Tags {
+		if !slices.Contains(tags, tag) {
+			tags = append(tags, tag)
 		}
 	}
-	if len(unknown) > 0 {
-		sort.Strings(unknown)
-		return cfg, fmt.Errorf("unknown config keys: %v", unknown)
-	}
+	cfg.Tags = tags
 
-	var errs []error
-	str := func(key string, dst *string) {
-		if v, ok := m[key]; ok && v != nil {
-			s, ok := v.(string)
-			if !ok {
-				errs = append(errs, fmt.Errorf("%s must be a string", key))
-				return
-			}
-			*dst = s
-		}
-	}
-	oneOf := func(key string, dst *string, values []string) {
-		str(key, dst)
-		if _, ok := m[key]; ok && !slices.Contains(values, *dst) {
-			errs = append(errs, fmt.Errorf("%s must be one of %v: %q", key, values, *dst))
-		}
-	}
-
-	str("endpoint", &cfg.Endpoint)
-	str("region", &cfg.Region)
-	if cfg.Region == "" {
-		cfg.Region = envOr(lookupEnv, DefaultRegion, "AWS_REGION", "AWS_DEFAULT_REGION")
-	}
-	str("accessKey", &cfg.AccessKey)
-	str("secretKey", &cfg.SecretKey)
-	str("sessionToken", &cfg.SessionToken)
-	oneOf("checksum", &cfg.Checksum, []string{ChecksumWhenSupported, ChecksumWhenRequired})
-	oneOf("checksumAlgorithm", &cfg.ChecksumAlgorithm, ChecksumAlgorithms)
-	oneOf("payloadSigning", &cfg.PayloadSigning,
-		[]string{PayloadSigningAuto, PayloadSigningUnsigned, PayloadSigningSigned})
-
-	if v, ok := m["pathStyle"]; ok && v != nil {
-		b, ok := v.(bool)
-		if !ok {
-			errs = append(errs, errors.New("pathStyle must be a boolean"))
-		}
-		cfg.PathStyle = b
-	}
-	if v, ok := m["timeout"]; ok && v != nil {
-		d, err := parseDuration(v)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("timeout: %w", err))
-		}
-		cfg.Timeout = d
-	}
-	if v, ok := m["maxAttempts"]; ok && v != nil {
-		n, err := toInt(v)
-		if err != nil || n < 1 {
-			errs = append(errs, fmt.Errorf("maxAttempts must be a positive integer: %v", v))
-		}
-		cfg.MaxAttempts = n
-	}
-	if v, ok := m["tracing"]; ok && v != nil {
-		t, err := parseTracing(v)
-		if err != nil {
-			errs = append(errs, err)
-		}
-		cfg.Tracing = t
-	}
-	if v, ok := m["tags"]; ok && v != nil {
-		tags, err := parseTags(v)
-		if err != nil {
-			errs = append(errs, err)
-		}
-		cfg.Tags = tags
-	}
-
-	if cfg.Endpoint == "" {
-		// The same precedence as the AWS SDKs: the service-specific variable first.
-		cfg.Endpoint = envOr(lookupEnv, "", "AWS_ENDPOINT_URL_S3", "AWS_ENDPOINT_URL")
-	}
 	if cfg.Endpoint == "" {
 		errs = append(errs, errors.New("endpoint is required (or set AWS_ENDPOINT_URL_S3 or AWS_ENDPOINT_URL)"))
 	} else if u, err := url.Parse(cfg.Endpoint); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
@@ -202,101 +135,4 @@ func ParseConfig(m map[string]any, lookupEnv func(string) (string, bool)) (Confi
 	}
 
 	return cfg, errors.Join(errs...)
-}
-
-// envOr returns the first non-empty value of the environment variables, or def.
-func envOr(lookupEnv func(string) (string, bool), def string, names ...string) string {
-	for _, name := range names {
-		if v, ok := lookupEnv(name); ok && v != "" {
-			return v
-		}
-	}
-	return def
-}
-
-// parseDuration accepts a duration string such as "30s" or a number of
-// milliseconds, following the k6 convention.
-func parseDuration(v any) (time.Duration, error) {
-	var d time.Duration
-	switch t := v.(type) {
-	case string:
-		var err error
-		if d, err = time.ParseDuration(t); err != nil {
-			return 0, err
-		}
-	case int64, int, float64:
-		f, _ := toFloat(t)
-		d = time.Duration(f * float64(time.Millisecond))
-	default:
-		return 0, fmt.Errorf("must be a duration string or milliseconds: %v", v)
-	}
-	if d <= 0 {
-		return 0, fmt.Errorf("must be positive: %v", v)
-	}
-	return d, nil
-}
-
-func toFloat(v any) (float64, bool) {
-	switch n := v.(type) {
-	case int64:
-		return float64(n), true
-	case int:
-		return float64(n), true
-	case float64:
-		return n, true
-	}
-	return 0, false
-}
-
-func toInt(v any) (int, error) {
-	f, ok := toFloat(v)
-	if !ok || f != math.Trunc(f) || f > math.MaxInt32 || f < math.MinInt32 {
-		return 0, fmt.Errorf("not an integer: %v", v)
-	}
-	return int(f), nil
-}
-
-func parseTracing(v any) (Tracing, error) {
-	t := Tracing{SampleRate: DefaultSampleRate}
-	m, ok := v.(map[string]any)
-	if !ok {
-		return t, errors.New("tracing must be an object")
-	}
-	for k, v := range m {
-		switch k {
-		case "sampleRate":
-			f, ok := toFloat(v)
-			if !ok || f < 0 || f > 1 || math.IsNaN(f) {
-				return t, fmt.Errorf("tracing.sampleRate must be a number in [0, 1]: %v", v)
-			}
-			t.SampleRate = f
-		case "propagate":
-			b, ok := v.(bool)
-			if !ok {
-				return t, fmt.Errorf("tracing.propagate must be a boolean: %v", v)
-			}
-			t.Propagate = b
-		default:
-			return t, fmt.Errorf("unknown tracing key: %q", k)
-		}
-	}
-	return t, nil
-}
-
-func parseTags(v any) ([]string, error) {
-	list, ok := v.([]any)
-	if !ok {
-		return nil, errors.New("tags must be an array of strings")
-	}
-	tags := make([]string, 0, len(list))
-	for _, e := range list {
-		s, ok := e.(string)
-		if !ok || (s != TagBucket && s != TagSizeClass) {
-			return nil, fmt.Errorf("tags must contain only %q or %q: %v", TagBucket, TagSizeClass, e)
-		}
-		if !slices.Contains(tags, s) {
-			tags = append(tags, s)
-		}
-	}
-	return tags, nil
 }
