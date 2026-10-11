@@ -1,0 +1,81 @@
+<!-- {{.Header}} -->
+
+# API reference
+
+The JavaScript API of the `k6/x/s3` module. TypeScript declarations are in [index.d.ts](../index.d.ts).
+
+```js
+import s3 from "k6/x/s3";
+```
+
+- [`s3.runId()`](#s3runid)
+- [`new s3.Client(config)`](#new-s3clientconfig)
+{{- range .Methods}}
+  - [{{heading .}}](#{{anchor (heading .)}})
+{{- end}}
+- [Types](#types)
+{{- range .Types}}
+  - [`{{.Name}}`](#{{anchor .Name}})
+{{- end}}
+  - [`Size`](#size)
+
+## `s3.runId()`
+
+```ts
+{{signature .RunID}}
+```
+
+{{doc .RunID.Doc}}
+
+## `new s3.Client(config)`
+
+```ts
+new Client(config: ClientConfig): Client
+```
+
+{{doc .ClientDoc}}
+{{range .Methods}}
+### {{heading .}}
+
+```ts
+{{signature .}}
+```
+
+{{doc .Doc}}
+{{if .Options}}
+Options: [`{{.Options.Name}}`](#{{anchor .Options.Name}})
+{{end}}
+{{- end}}
+## Types
+{{range .Types}}
+### `{{.Name}}`
+
+{{doc .Doc}}
+
+{{if .Options -}}
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+{{- range .Fields}}
+| `{{.Name}}` | {{typeCell .Type}} | {{cell .Default}} | {{cell (doc (description .))}} |
+{{- end}}
+{{- else -}}
+| Field | Type | Description |
+| --- | --- | --- |
+{{- range .Fields}}
+| `{{.Name}}` | {{typeCell .Type}} | {{cell (doc (description .))}} |
+{{- end}}
+{{- end}}
+{{end}}
+### `Size`
+
+A size: a number of bytes, a string with a binary unit such as `"1MiB"`, or a size distribution.
+See [Sizes](../README.md#sizes) in README.
+
+```ts
+type Size =
+  | number
+  | string
+  | { dist: "uniform"; min: number | string; max: number | string }
+  | { dist: "lognormal"; median: number | string; sigma: number }
+  | { dist: "choice"; values: { size: number | string; weight: number }[] };
+```

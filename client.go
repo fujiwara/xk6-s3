@@ -7,7 +7,6 @@ import (
 	"maps"
 	"math/rand/v2"
 	"net/http"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,6 +17,7 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/fujiwara/xk6-s3/internal/client"
 	"github.com/fujiwara/xk6-s3/internal/data"
+	"github.com/fujiwara/xk6-s3/internal/jsobj"
 	"github.com/fujiwara/xk6-s3/internal/metrics"
 	"github.com/fujiwara/xk6-s3/internal/tracing"
 	"github.com/grafana/sobek"
@@ -29,28 +29,41 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
-// Result is the result of an operation returned to JavaScript.
-// S3 and network errors are reported here instead of being thrown.
+// Result is the result of an operation.
+//
+// S3 and network errors do not throw. Each operation returns a result, so
+// that an error does not abort the iteration. Only script errors (invalid
+// arguments, calls in the init context) throw. The first few failures of
+// each operation type are logged as warnings with the request ID.
 type Result struct {
-	OK        bool   `js:"ok"`
-	Status    int    `js:"status"`
-	Bytes     int64  `js:"bytes"`
+	// OK reports whether the operation succeeded.
+	OK bool `js:"ok"`
+	// Status is the HTTP status code, 0 for network errors.
+	Status int `js:"status"`
+	// Bytes is the number of body bytes sent or received.
+	Bytes int64 `js:"bytes"`
+	// ErrorKind is the kind of the error: s3, http, timeout, network,
+	// canceled or other. Empty on success.
 	ErrorKind string `js:"errorKind"`
+	// ErrorCode is the S3 error code such as NoSuchKey or SlowDown, for s3
+	// errors.
 	ErrorCode string `js:"errorCode"`
-	Error     string `js:"error"`
+	// Error is the error message. Empty on success.
+	Error string `js:"error"`
+	// RequestID is the x-amz-request-id of the response.
 	RequestID string `js:"requestId"`
 	// Count is the number of objects listed, uploaded or deleted by
-	// listObjects, preload and deletePrefix.
+	// listObjects, deleteObjects, preload and deletePrefix.
 	Count int64 `js:"count"`
-	// Failed is the number of failed objects in preload and deletePrefix.
+	// Failed is the number of failed objects in deleteObjects, preload and
+	// deletePrefix.
 	Failed int64 `js:"failed"`
-	// Keys is the []string of the listed keys of listObjects with the keys
-	// option, or nil (null in JavaScript). A nil []string would be exported
-	// as an empty array.
-	Keys any `js:"keys"`
-	// Prefixes is the []string of the common prefixes of listObjects with
-	// the keys option, or nil, as Keys.
-	Prefixes any `js:"prefixes"`
+	// Keys are the listed keys of listObjects with the keys option,
+	// otherwise null.
+	Keys any `js:"keys" ts:"string[] | null"` // []string or nil; a nil []string would be exported as []
+	// Prefixes are the listed common prefixes of listObjects with the keys
+	// option, otherwise null.
+	Prefixes any `js:"prefixes" ts:"string[] | null"` // []string or nil, as Keys
 }
 
 // setError copies the error of r into res unless res already has one.
@@ -65,7 +78,15 @@ func (res *Result) setError(r *Result) {
 	res.Error = r.Error
 }
 
-// Client is the JavaScript s3.Client. Each VU has its own instance.
+// Client is a client of an S3-compatible server.
+//
+// Create clients in the init context. The configuration is validated there,
+// and the underlying SDK client is created in each VU on its first
+// operation. Requests are sent through the VU's k6 HTTP transport, so
+// data_sent and data_received are recorded and the k6 TLS and connection
+// options (insecureSkipTLSVerify, tlsAuth, noConnectionReuse, ...) apply.
+//
+// Operations cannot be called in the init context.
 type Client struct {
 	vu   modules.VU
 	root *RootModule
@@ -341,8 +362,12 @@ func (c *Client) warn(env vuEnv, o op, res *Result) {
 	l.Warn(msg)
 }
 
+// Size is a size argument: a number of bytes, a string with a binary unit
+// such as "1MiB", or a size distribution. See the Sizes section of README.
+type Size = sobek.Value
+
 // sizer parses a size argument. It throws on invalid sizes.
-func (c *Client) sizer(v sobek.Value) data.Sizer {
+func (c *Client) sizer(v Size) data.Sizer {
 	if v == nil || sobek.IsUndefined(v) || sobek.IsNull(v) {
 		c.throw(errors.New("size is required"))
 	}
@@ -362,86 +387,17 @@ func (c *Client) newBody(size int64) *data.Reader {
 	return r
 }
 
-// options exports an optional options object. It throws if v is not an object.
-func (c *Client) options(v sobek.Value, keys ...string) map[string]any {
-	if v == nil || sobek.IsUndefined(v) || sobek.IsNull(v) {
-		return map[string]any{}
-	}
-	m, ok := v.Export().(map[string]any)
-	if !ok {
-		c.throw(errors.New("options must be an object"))
-	}
-	for k := range m {
-		if !slices.Contains(keys, k) {
-			c.throw(fmt.Errorf("unknown option %q (available: %v)", k, keys))
+// decodeOptions decodes an optional options object into dst, a pointer to
+// the options struct of the method. It throws on invalid options.
+func (c *Client) decodeOptions(v sobek.Value, dst any) {
+	m := map[string]any{}
+	if v != nil && !sobek.IsUndefined(v) && !sobek.IsNull(v) {
+		var ok bool
+		if m, ok = v.Export().(map[string]any); !ok {
+			c.throw(errors.New("options must be an object"))
 		}
 	}
-	return m
-}
-
-// intOption returns a positive integer option or def.
-func (c *Client) intOption(m map[string]any, name string, def int64) int64 {
-	v, ok := m[name]
-	if !ok || v == nil {
-		return def
+	if err := jsobj.Decode(m, dst, nil); err != nil {
+		c.throw(fmt.Errorf("invalid options: %w", err))
 	}
-	var n int64
-	switch t := v.(type) {
-	case int64:
-		n = t
-	case float64:
-		if t != float64(int64(t)) {
-			c.throw(fmt.Errorf("%s must be an integer: %v", name, v))
-		}
-		n = int64(t)
-	default:
-		c.throw(fmt.Errorf("%s must be an integer: %v", name, v))
-	}
-	if n < 0 {
-		c.throw(fmt.Errorf("%s must not be negative: %d", name, n))
-	}
-	return n
-}
-
-// boolOption returns a boolean option or def.
-func (c *Client) boolOption(m map[string]any, name string, def bool) bool {
-	v, ok := m[name]
-	if !ok || v == nil {
-		return def
-	}
-	b, ok := v.(bool)
-	if !ok {
-		c.throw(fmt.Errorf("%s must be a boolean: %v", name, v))
-	}
-	return b
-}
-
-// stringOption returns a string option or def.
-func (c *Client) stringOption(m map[string]any, name string, def string) string {
-	v, ok := m[name]
-	if !ok || v == nil {
-		return def
-	}
-	str, ok := v.(string)
-	if !ok {
-		c.throw(fmt.Errorf("%s must be a string: %v", name, v))
-	}
-	return str
-}
-
-// sizeOption returns a byte size option or def.
-func (c *Client) sizeOption(m map[string]any, name string, def int64) int64 {
-	v, ok := m[name]
-	if !ok || v == nil {
-		return def
-	}
-	s, err := data.ParseSizer(v)
-	if err != nil {
-		c.throw(fmt.Errorf("%s: %w", name, err))
-	}
-	f, ok := s.(data.Fixed)
-	if !ok {
-		c.throw(fmt.Errorf("%s must be a fixed size", name))
-	}
-	return int64(f)
 }

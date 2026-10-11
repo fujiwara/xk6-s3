@@ -16,17 +16,19 @@ import (
 	"github.com/grafana/sobek"
 )
 
-// Defaults of putObjectMultipart, following the aws-sdk-go-v2 upload manager.
-const (
-	defaultPartSize            = 5 << 20
-	defaultMultipartConcurrent = 5
-	maxParts                   = 10000
-)
+// maxParts is the maximum number of parts of a multipart upload.
+const maxParts = 10000
 
-// PutObjectMultipart uploads an object with a multipart upload. Options:
-//
-//   - partSize: the part size (default: 5MiB)
-//   - concurrency: the number of parts uploaded at once (default: 5)
+// PutObjectMultipartOptions are the options of putObjectMultipart. The
+// defaults follow the aws-sdk-go-v2 upload manager.
+type PutObjectMultipartOptions struct {
+	// PartSize is the part size.
+	PartSize data.Fixed `js:"partSize" default:"5MiB" min:"1"`
+	// Concurrency is the number of parts uploaded at once.
+	Concurrency int64 `js:"concurrency" default:"5" min:"1"`
+}
+
+// PutObjectMultipart uploads an object with a multipart upload.
 //
 // Like the aws-sdk-go-v2 upload manager, the checksum algorithm (CRC32
 // unless configured) is set on CreateMultipartUpload and UploadPart when
@@ -35,19 +37,13 @@ const (
 //
 // The whole upload is measured as put_multipart and each part as
 // upload_part. The timeout applies to each request.
-func (c *Client) PutObjectMultipart(bucket, key string, size, options sobek.Value) *Result {
+func (c *Client) PutObjectMultipart(bucket, key string, size Size, options sobek.Value) *Result {
 	rt := c.vu.Runtime()
 	requireName(rt, "bucket", bucket)
 	requireName(rt, "key", key)
-	opts := c.options(options, "partSize", "concurrency")
-	partSize := c.sizeOption(opts, "partSize", defaultPartSize)
-	if partSize <= 0 {
-		c.throw(errors.New("partSize must be positive"))
-	}
-	concurrency := c.intOption(opts, "concurrency", defaultMultipartConcurrent)
-	if concurrency <= 0 {
-		c.throw(errors.New("concurrency must be positive"))
-	}
+	var opts PutObjectMultipartOptions
+	c.decodeOptions(options, &opts)
+	partSize, concurrency := int64(opts.PartSize), opts.Concurrency
 	n := c.sizer(size).Next(c.rng)
 	parts := max((n+partSize-1)/partSize, 1)
 	if parts > maxParts {

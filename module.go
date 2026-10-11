@@ -12,6 +12,8 @@ import (
 	"go.k6.io/k6/v2/js/modules"
 )
 
+//go:generate go run ./internal/cmd/apidoc
+
 // ImportPath is the JavaScript import path of the module.
 const ImportPath = "k6/x/s3"
 
@@ -79,7 +81,11 @@ func (mi *ModuleInstance) Exports() modules.Exports {
 	}
 }
 
-// RunID returns the run ID shared by all VUs in the process.
+// RunID returns the run ID shared by all VUs in the process, intended to be
+// used as a key prefix such as `<runId>/<dataset>/<n>`. It is available in
+// the init context. It is the value of the `XK6_S3_RUN_ID` environment
+// variable if set, otherwise a random 8-character string. See the runId
+// section of README.
 func (mi *ModuleInstance) RunID() string {
 	return mi.root.runID
 }

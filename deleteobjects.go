@@ -17,11 +17,15 @@ import (
 // maxDeleteObjects is the maximum number of keys in a DeleteObjects request.
 const maxDeleteObjects = 1000
 
+// DeleteObjectsOptions are the options of deleteObjects.
+type DeleteObjectsOptions struct {
+	// Quiet requests the quiet mode, in which the response lists only the
+	// failed keys. Not quiet by default, as the S3 API and minio-go.
+	Quiet bool `js:"quiet"`
+}
+
 // DeleteObjects deletes up to 1000 objects with one DeleteObjects request,
-// measured as a delete_objects operation. Options:
-//
-//   - quiet: request the quiet mode, in which the response lists only the
-//     failed keys (default: false, as the S3 API and minio-go)
+// measured as a delete_objects operation.
 //
 // The result has the number of deleted objects in count and the number of
 // failed objects in failed. When any object fails, the result is not ok and
@@ -37,8 +41,9 @@ func (c *Client) DeleteObjects(bucket string, keys []string, options sobek.Value
 		requireName(rt, fmt.Sprintf("keys[%d]", i), key)
 		objects[i] = types.ObjectIdentifier{Key: aws.String(key)}
 	}
-	opts := c.options(options, "quiet")
-	quiet := c.boolOption(opts, "quiet", false)
+	var opts DeleteObjectsOptions
+	c.decodeOptions(options, &opts)
+	quiet := opts.Quiet
 	env := c.env()
 	sdk := c.client(env)
 	return c.measure(env, op{name: metrics.OpDeleteObjects, bucket: bucket, size: -1}, func(ctx context.Context) (opOutput, error) {

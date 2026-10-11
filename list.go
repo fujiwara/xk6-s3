@@ -9,25 +9,41 @@ import (
 	"github.com/grafana/sobek"
 )
 
-// ListObjects lists objects with ListObjectsV2. Each request (page) is
-// measured as a list operation. Options:
-//
-//   - maxKeys: MaxKeys of each request (default: server default, 1000 on S3)
-//   - maxPages: the number of pages to fetch, 0 for all (default: 1)
-//   - delimiter: Delimiter of each request (default: none)
-//   - keys: return the listed keys in keys and the common prefixes in
-//     prefixes (default: false)
+// ListObjectsOptions are the options of listObjects.
+type ListObjectsOptions struct {
+	// MaxKeys is the MaxKeys of each request. The server default (1000 on
+	// S3) if 0 or not set. It limits the objects and the common prefixes
+	// together.
+	MaxKeys int64 `js:"maxKeys"`
+	// MaxPages is the number of pages to fetch, 0 for all pages.
+	MaxPages int64 `js:"maxPages" default:"1"`
+	// Delimiter is the Delimiter of each request. Without it, all objects
+	// under the prefix are listed. With it, the objects in the next levels
+	// are grouped into common prefixes.
+	Delimiter string `js:"delimiter"`
+	// Keys returns the listed keys in keys and the common prefixes in
+	// prefixes of the result.
+	Keys bool `js:"keys"`
+}
+
+// ListObjects lists objects under the prefix with ListObjectsV2. Each
+// request (page) is measured as a list operation.
 //
 // The result has the total number of listed objects in count, and the
 // status, request ID and error of the last request. Common prefixes are not
 // counted.
+//
+// For example, to get the listed objects in order:
+//
+//	const r = client.listObjects(bucket, prefix, { maxPages: 0, keys: true });
+//	for (const key of r.keys) {
+//	  client.getObject(bucket, key);
+//	}
 func (c *Client) ListObjects(bucket, prefix string, options sobek.Value) *Result {
 	requireName(c.vu.Runtime(), "bucket", bucket)
-	opts := c.options(options, "maxKeys", "maxPages", "delimiter", "keys")
-	maxKeys := c.intOption(opts, "maxKeys", 0)
-	maxPages := c.intOption(opts, "maxPages", 1)
-	delimiter := c.stringOption(opts, "delimiter", "")
-	withKeys := c.boolOption(opts, "keys", false)
+	var opts ListObjectsOptions
+	c.decodeOptions(options, &opts)
+	maxKeys, maxPages, delimiter, withKeys := opts.MaxKeys, opts.MaxPages, opts.Delimiter, opts.Keys
 	env := c.env()
 	sdk := c.client(env)
 
