@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.2.1](https://github.com/fujiwara/xk6-s3/compare/v0.2.0...v0.2.1) - 2026-10-11
+
+- Add keys and delimiter options to listObjects by @fujiwara in https://github.com/fujiwara/xk6-s3/pull/16
+- Generate the API reference and TypeScript declarations from Go source by @fujiwara in https://github.com/fujiwara/xk6-s3/pull/18
+- Move the development guide from README to AGENTS.md by @fujiwara in https://github.com/fujiwara/xk6-s3/pull/19
+
 ## [v0.2.0](https://github.com/fujiwara/xk6-s3/compare/v0.1.0...v0.2.0) - 2026-10-10
 
 - Reject ambiguous size units such as MB by @fujiwara in https://github.com/fujiwara/xk6-s3/pull/4
