@@ -158,7 +158,7 @@ Options:
 
 - `putObjectMultipart`: `partSize` (default `"5MiB"`), `concurrency` (default `5`). The defaults follow the aws-sdk-go-v2 upload manager. As the upload manager does, the checksum algorithm is set on CreateMultipartUpload and UploadPart when `checksum` is `when_supported`, and the part checksums are sent with CompleteMultipartUpload. The `timeout` applies to each request.
 - `deleteObjects`: `quiet` (default `false`, as the S3 API and minio-go). The result is not `ok` when any object was not deleted, and has the first per-object error.
-- `listObjects`: `maxKeys` (default: server default), `maxPages` (default `1`, `0` for all pages). Each request is measured as a `list` operation.
+- `listObjects`: `maxKeys` (default: server default), `maxPages` (default `1`, `0` for all pages), `delimiter` (default: none), `keys` (default `false`, return the listed keys in `keys` and the common prefixes in `prefixes`). Each request is measured as a `list` operation. Without `delimiter`, all objects under the prefix are listed. With `delimiter`, `count` and `keys` have only the objects, and the common prefixes are not counted. Note that `maxKeys` limits the objects and common prefixes together.
 - `preload` / `deletePrefix`: `concurrency` (default `16`). Each object operation is measured as `put` / `delete`.
 
 Operations that send requests concurrently use a copy of the VU's k6 transport with idle connection limits raised to the concurrency, so that connections are reused beyond `batchPerHost`.
@@ -176,8 +176,19 @@ S3 and network errors do not throw. Each operation returns a result object, so t
 | `requestId` | `x-amz-request-id` of the response |
 | `count` | Objects listed, uploaded or deleted (`listObjects`, `deleteObjects`, `preload`, `deletePrefix`) |
 | `failed` | Objects that failed (`deleteObjects`, `preload`, `deletePrefix`) |
+| `keys` | Listed keys (`listObjects` with `keys: true`), otherwise `null` |
+| `prefixes` | Listed common prefixes (`listObjects` with `keys: true`), otherwise `null` |
 
 `preload` and `deletePrefix` are `ok` when no object failed, and report the first error.
+
+For example, to get the listed objects in order:
+
+```js
+const r = client.listObjects(bucket, prefix, { maxPages: 0, keys: true });
+for (const key of r.keys) {
+  client.getObject(bucket, key);
+}
+```
 
 The first few failures of each operation type are logged as warnings with the request ID.
 

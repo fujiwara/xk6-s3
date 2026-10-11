@@ -44,6 +44,13 @@ type Result struct {
 	Count int64 `js:"count"`
 	// Failed is the number of failed objects in preload and deletePrefix.
 	Failed int64 `js:"failed"`
+	// Keys is the []string of the listed keys of listObjects with the keys
+	// option, or nil (null in JavaScript). A nil []string would be exported
+	// as an empty array.
+	Keys any `js:"keys"`
+	// Prefixes is the []string of the common prefixes of listObjects with
+	// the keys option, or nil, as Keys.
+	Prefixes any `js:"prefixes"`
 }
 
 // setError copies the error of r into res unless res already has one.
@@ -394,6 +401,32 @@ func (c *Client) intOption(m map[string]any, name string, def int64) int64 {
 		c.throw(fmt.Errorf("%s must not be negative: %d", name, n))
 	}
 	return n
+}
+
+// boolOption returns a boolean option or def.
+func (c *Client) boolOption(m map[string]any, name string, def bool) bool {
+	v, ok := m[name]
+	if !ok || v == nil {
+		return def
+	}
+	b, ok := v.(bool)
+	if !ok {
+		c.throw(fmt.Errorf("%s must be a boolean: %v", name, v))
+	}
+	return b
+}
+
+// stringOption returns a string option or def.
+func (c *Client) stringOption(m map[string]any, name string, def string) string {
+	v, ok := m[name]
+	if !ok || v == nil {
+		return def
+	}
+	str, ok := v.(string)
+	if !ok {
+		c.throw(fmt.Errorf("%s must be a string: %v", name, v))
+	}
+	return str
 }
 
 // sizeOption returns a byte size option or def.

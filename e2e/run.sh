@@ -59,6 +59,7 @@ S3_ENDPOINT_HTTP="http://127.0.0.1:$HTTP_PORT" S3_ENDPOINT_HTTPS="https://127.0.
 
 for endpoint in "http://127.0.0.1:$HTTP_PORT" "https://127.0.0.1:$HTTPS_PORT"; do
   export AWS_ENDPOINT_URL_S3=$endpoint
+  run --insecure-skip-tls-verify e2e/list.js
   export VUS=4 DURATION=3s OBJECTS=50 SIZE=256KiB
   run --insecure-skip-tls-verify examples/put.js
   run --insecure-skip-tls-verify examples/get.js

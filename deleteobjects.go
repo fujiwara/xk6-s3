@@ -38,14 +38,7 @@ func (c *Client) DeleteObjects(bucket string, keys []string, options sobek.Value
 		objects[i] = types.ObjectIdentifier{Key: aws.String(key)}
 	}
 	opts := c.options(options, "quiet")
-	quiet := false
-	if v, ok := opts["quiet"]; ok && v != nil {
-		b, ok := v.(bool)
-		if !ok {
-			c.throw(errors.New("quiet must be a boolean"))
-		}
-		quiet = b
-	}
+	quiet := c.boolOption(opts, "quiet", false)
 	env := c.env()
 	sdk := c.client(env)
 	return c.measure(env, op{name: metrics.OpDeleteObjects, bucket: bucket, size: -1}, func(ctx context.Context) (opOutput, error) {
