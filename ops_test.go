@@ -60,9 +60,41 @@ func TestListObjects(t *testing.T) {
 	if r := e.result(`client.listObjects("missing", "")`); r["ok"] != false || r["errorCode"] != "NoSuchBucket" {
 		t.Errorf("listObjects (missing bucket) = %v", r)
 	}
+	if r := e.result(`client.listObjects("bucket", "list/")`); r["keys"] != nil || r["prefixes"] != nil {
+		t.Errorf("listObjects without keys option = %v", r)
+	}
+	for _, tt := range []struct {
+		code string
+		keys string
+	}{
+		{`client.listObjects("bucket", "list/", { keys: true })`, `["list/0","list/1","list/2","list/3","list/4"]`},
+		{`client.listObjects("bucket", "list/", { keys: true, maxKeys: 2, maxPages: 2 })`, `["list/0","list/1","list/2","list/3"]`},
+		{`client.listObjects("bucket", "none/", { keys: true })`, `[]`},
+		{`client.listObjects("bucket", "list/", { keys: false })`, `null`},
+	} {
+		if got := e.run("JSON.stringify(" + tt.code + ".keys)").String(); got != tt.keys {
+			t.Errorf("%s keys = %s, want %s", tt.code, got, tt.keys)
+		}
+	}
+
+	// With a delimiter, count and keys have only the objects.
+	e.run(`client.putObject("bucket", "list/dir/a", 10); client.putObject("bucket", "list/dir/b", 10); client.putObject("bucket", "list/dir2/c", 10);`)
+	e.drain()
+	r := e.result(`client.listObjects("bucket", "list/", { delimiter: "/" })`)
+	if r["ok"] != true || r["count"] != int64(5) || r["prefixes"] != nil {
+		t.Errorf("listObjects with delimiter = %v", r)
+	}
+	if got := e.run(`JSON.stringify((({ count, keys, prefixes }) => ({ count, keys, prefixes }))(client.listObjects("bucket", "list/", { delimiter: "/", keys: true })))`).String(); got != `{"count":5,"keys":["list/0","list/1","list/2","list/3","list/4"],"prefixes":["list/dir/","list/dir2/"]}` {
+		t.Errorf("listObjects with delimiter and keys = %s", got)
+	}
+	if r := e.result(`client.listObjects("bucket", "list/", { maxPages: 0 })`); r["count"] != int64(8) {
+		t.Errorf("listObjects without delimiter = %v", r)
+	}
 	for _, code := range []string{
 		`client.listObjects("bucket", "", { maxKey: 1 })`,
 		`client.listObjects("bucket", "", { maxKeys: -1 })`,
+		`client.listObjects("bucket", "", { keys: 1 })`,
+		`client.listObjects("bucket", "", { delimiter: 1 })`,
 		`client.listObjects("bucket", "", 1)`,
 	} {
 		if _, err := e.rt.RunOnEventLoop(code); err == nil {

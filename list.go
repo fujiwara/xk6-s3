@@ -14,18 +14,28 @@ import (
 //
 //   - maxKeys: MaxKeys of each request (default: server default, 1000 on S3)
 //   - maxPages: the number of pages to fetch, 0 for all (default: 1)
+//   - delimiter: Delimiter of each request (default: none)
+//   - keys: return the listed keys in keys and the common prefixes in
+//     prefixes (default: false)
 //
 // The result has the total number of listed objects in count, and the
-// status, request ID and error of the last request.
+// status, request ID and error of the last request. Common prefixes are not
+// counted.
 func (c *Client) ListObjects(bucket, prefix string, options sobek.Value) *Result {
 	requireName(c.vu.Runtime(), "bucket", bucket)
-	opts := c.options(options, "maxKeys", "maxPages")
+	opts := c.options(options, "maxKeys", "maxPages", "delimiter", "keys")
 	maxKeys := c.intOption(opts, "maxKeys", 0)
 	maxPages := c.intOption(opts, "maxPages", 1)
+	delimiter := c.stringOption(opts, "delimiter", "")
+	withKeys := c.boolOption(opts, "keys", false)
 	env := c.env()
 	sdk := c.client(env)
 
 	total := &Result{}
+	var keys, prefixes []string
+	if withKeys {
+		keys, prefixes = []string{}, []string{}
+	}
 	var token *string
 	for page := int64(0); maxPages == 0 || page < maxPages; page++ {
 		var next *string
@@ -38,6 +48,9 @@ func (c *Client) ListObjects(bucket, prefix string, options sobek.Value) *Result
 			if prefix != "" {
 				in.Prefix = aws.String(prefix)
 			}
+			if delimiter != "" {
+				in.Delimiter = aws.String(delimiter)
+			}
 			if maxKeys > 0 {
 				in.MaxKeys = aws.Int32(int32(min(maxKeys, 1<<31-1)))
 			}
@@ -46,6 +59,14 @@ func (c *Client) ListObjects(bucket, prefix string, options sobek.Value) *Result
 				return noBody, err
 			}
 			count = int64(len(out.Contents))
+			if withKeys {
+				for _, obj := range out.Contents {
+					keys = append(keys, aws.ToString(obj.Key))
+				}
+				for _, p := range out.CommonPrefixes {
+					prefixes = append(prefixes, aws.ToString(p.Prefix))
+				}
+			}
 			if aws.ToBool(out.IsTruncated) {
 				next = out.NextContinuationToken
 			}
@@ -54,6 +75,10 @@ func (c *Client) ListObjects(bucket, prefix string, options sobek.Value) *Result
 		count += total.Count
 		*total = *res
 		total.Count = count
+		if withKeys {
+			total.Keys = keys
+			total.Prefixes = prefixes
+		}
 		if !res.OK || next == nil {
 			break
 		}
