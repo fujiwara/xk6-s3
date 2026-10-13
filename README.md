@@ -184,6 +184,13 @@ $ OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION=base2_exponential_buc
 
 The Rate metric `s3_op_errors` is exported as counters by k6 (e.g. `s3_op_errors.total`).
 
+xk6-s3 does not read the OpenTelemetry environment variables; the output is configured by k6 with the `K6_OTEL_*` environment variables. Of the standard ones:
+
+- `OTEL_SERVICE_NAME` sets the `service.name` resource attribute (default `k6`), as `K6_OTEL_SERVICE_NAME` does.
+- `OTEL_RESOURCE_ATTRIBUTES` adds resource attributes.
+- `OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION` selects the histogram aggregation, as above.
+- The endpoints in `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` are not used, because k6 always sets the endpoint. Use `K6_OTEL_GRPC_EXPORTER_ENDPOINT` or `K6_OTEL_HTTP_EXPORTER_ENDPOINT`.
+
 ## Tracing
 
 Operations are traced with OpenTelemetry when k6 sends traces with `--traces-output` (or `K6_TRACES_OUTPUT`):
@@ -200,6 +207,12 @@ The `tracing` option of `s3.Client` controls it:
 - `propagate`: adds the W3C `traceparent` header to the requests of traced operations, to join the traces of the server (default `false`). The header is added after signing, so the signature is the same as without it.
 
 Without `--traces-output`, no spans are created.
+
+xk6-s3 does not read the OpenTelemetry environment variables; the tracer provider is created by k6 from `--traces-output`. Of the standard ones:
+
+- `OTEL_TRACES_SAMPLER` and `OTEL_TRACES_SAMPLER_ARG` apply to every span of k6, after `sampleRate`: with `sampleRate: 0.1` and `OTEL_TRACES_SAMPLER=traceidratio` with `OTEL_TRACES_SAMPLER_ARG=0.5`, about 5% of the operations are traced, and failed operations are no longer always traced. Leave them unset and use `sampleRate`.
+- `OTEL_SERVICE_NAME` and `OTEL_RESOURCE_ATTRIBUTES` are not used. The `service.name` of the traces is always `k6`.
+- The endpoints in `OTEL_EXPORTER_OTLP_*` are not used, because k6 always sets the endpoint from `--traces-output`.
 
 ## Request format
 
