@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.2.2](https://github.com/fujiwara/xk6-s3/compare/v0.2.1...v0.2.2) - 2026-10-13
+
+- Add s3.parseSize() by @fujiwara in https://github.com/fujiwara/xk6-s3/pull/20
+
 ## [v0.2.1](https://github.com/fujiwara/xk6-s3/compare/v0.2.0...v0.2.1) - 2026-10-11
 
 - Add keys and delimiter options to listObjects by @fujiwara in https://github.com/fujiwara/xk6-s3/pull/16
