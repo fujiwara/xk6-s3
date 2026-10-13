@@ -9,6 +9,7 @@ import s3 from "k6/x/s3";
 ```
 
 - [`s3.runId()`](#s3runid)
+- [`s3.parseSize(size)`](#s3parsesizesize)
 - [`new s3.Client(config)`](#new-s3clientconfig)
   - [`client.createBucket(bucket)`](#clientcreatebucketbucket)
   - [`client.deleteBucket(bucket)`](#clientdeletebucketbucket)
@@ -42,6 +43,30 @@ Returns the run ID shared by all VUs in the process, intended to be
 used as a key prefix such as `<runId>/<dataset>/<n>`. It is available in
 the init context. It is the value of the `XK6_S3_RUN_ID` environment
 variable if set, otherwise a random 8-character string. See [runId](../README.md#runid) in README.
+
+## `s3.parseSize(size)`
+
+```ts
+parseSize(size: string): number
+```
+
+Returns the number of bytes of a size such as `"10MiB"` or
+`"1.5GiB"`, in the same format as the sizes of the operations (see [Sizes](../README.md#sizes) in README), but not a size distribution. It throws on an
+invalid size. Use it to compare sizes with the bytes of results, for
+example to stop writing at a total size per VU:
+
+```js
+const limit = s3.parseSize("1GiB");
+let written = 0;
+
+export default function () {
+  if (written >= limit) {
+    return;
+  }
+  const res = client.putObject("bucket", `${s3.runId()}/${__VU}-${__ITER}`, "10MiB");
+  written += res.bytes;
+}
+```
 
 ## `new s3.Client(config)`
 

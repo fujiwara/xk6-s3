@@ -8,7 +8,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/fujiwara/xk6-s3/internal/data"
 	"github.com/fujiwara/xk6-s3/internal/metrics"
+	"go.k6.io/k6/v2/js/common"
 	"go.k6.io/k6/v2/js/modules"
 )
 
@@ -75,8 +77,9 @@ func (r *RootModule) NewModuleInstance(vu modules.VU) modules.Instance {
 func (mi *ModuleInstance) Exports() modules.Exports {
 	return modules.Exports{
 		Named: map[string]any{
-			"runId":  mi.RunID,
-			"Client": mi.newClient,
+			"runId":     mi.RunID,
+			"parseSize": mi.ParseSize,
+			"Client":    mi.newClient,
 		},
 	}
 }
@@ -88,6 +91,30 @@ func (mi *ModuleInstance) Exports() modules.Exports {
 // section of README.
 func (mi *ModuleInstance) RunID() string {
 	return mi.root.runID
+}
+
+// ParseSize returns the number of bytes of a size such as `"10MiB"` or
+// `"1.5GiB"`, in the same format as the sizes of the operations (see the
+// Sizes section of README), but not a size distribution. It throws on an
+// invalid size. Use it to compare sizes with the bytes of results, for
+// example to stop writing at a total size per VU:
+//
+//	const limit = s3.parseSize("1GiB");
+//	let written = 0;
+//
+//	export default function () {
+//	  if (written >= limit) {
+//	    return;
+//	  }
+//	  const res = client.putObject("bucket", `${s3.runId()}/${__VU}-${__ITER}`, "10MiB");
+//	  written += res.bytes;
+//	}
+func (mi *ModuleInstance) ParseSize(size string) int64 {
+	n, err := data.ParseBytes(size)
+	if err != nil {
+		common.Throw(mi.vu.Runtime(), err)
+	}
+	return n
 }
 
 func lookupEnvFunc(vu modules.VU) func(string) (string, bool) {

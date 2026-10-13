@@ -4,9 +4,10 @@
  * TypeScript declarations of the k6/x/s3 module. See docs/api.md for the details.
  */
 declare module "k6/x/s3" {
-{{jsdoc "  " .RunID.Doc}}
-  export function {{signature .RunID}};
-
+{{- range .Functions}}
+{{jsdoc "  " .Doc}}
+  export function {{signature .}};
+{{end}}
 {{jsdoc "  " .ClientDoc}}
   export class Client {
     constructor(config: ClientConfig);
@@ -41,6 +42,7 @@ declare module "k6/x/s3" {
     | { dist: "lognormal"; median: number | string; sigma: number }
     | { dist: "choice"; values: { size: number | string; weight: number }[] };
 
-  const s3: { runId: typeof runId; Client: typeof Client };
+  const s3: {
+{{- range .Functions}} {{.Name}}: typeof {{.Name}};{{end}} Client: typeof Client };
   export default s3;
 }

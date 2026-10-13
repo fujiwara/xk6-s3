@@ -17,7 +17,8 @@ import (
 // API is the JavaScript API of the module. The fields are exported for
 // the templates.
 type API struct {
-	RunID     Method
+	// Functions are the functions of the module.
+	Functions []Method
 	ClientDoc string
 	Methods   []Method
 	// Types are the interfaces in the order of appearance: the client
@@ -143,12 +144,16 @@ func build(root string) (*API, error) {
 	}
 	b := &builder{a: &API{}, seen: map[string]*Interface{}}
 
-	runID := find(s3.methods["ModuleInstance"], "RunID")
-	if runID == nil {
-		return nil, fmt.Errorf("ModuleInstance.RunID not found")
-	}
-	if b.a.RunID, err = b.method(s3, runID, "runId"); err != nil {
-		return nil, err
+	for _, f := range moduleFunctions {
+		d := find(s3.methods["ModuleInstance"], f.goName)
+		if d == nil {
+			return nil, fmt.Errorf("ModuleInstance.%s not found", f.goName)
+		}
+		m, err := b.method(s3, d, f.jsName)
+		if err != nil {
+			return nil, err
+		}
+		b.a.Functions = append(b.a.Functions, m)
 	}
 	if b.a.ClientDoc, err = docOf(s3, "Client"); err != nil {
 		return nil, err
@@ -173,6 +178,13 @@ func build(root string) (*API, error) {
 		return nil, err
 	}
 	return b.a, nil
+}
+
+// moduleFunctions are the methods of ModuleInstance exported as the
+// functions of the module, in the order of the documents.
+var moduleFunctions = []struct{ goName, jsName string }{
+	{"RunID", "runId"},
+	{"ParseSize", "parseSize"},
 }
 
 type builder struct {

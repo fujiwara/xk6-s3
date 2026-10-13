@@ -89,3 +89,34 @@ func TestDeclarations(t *testing.T) {
 		}
 	}
 }
+
+func TestParseSize(t *testing.T) {
+	rt := modulestest.NewRuntime(t)
+	mi := New().NewModuleInstance(rt.VU)
+	if err := rt.VU.Runtime().Set("s3", mi.Exports().Named); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		expr string
+		want int64
+	}{
+		{`s3.parseSize("10MiB")`, 10 << 20},
+		{`s3.parseSize("1.5GiB")`, 3 << 29},
+		{`s3.parseSize("512")`, 512},
+		{`s3.parseSize(1024)`, 1024},
+	}
+	for _, tt := range tests {
+		v, err := rt.RunOnEventLoop(tt.expr)
+		if err != nil {
+			t.Fatalf("%s: %v", tt.expr, err)
+		}
+		if got := v.ToInteger(); got != tt.want {
+			t.Errorf("%s = %d, want %d", tt.expr, got, tt.want)
+		}
+	}
+	for _, expr := range []string{`s3.parseSize("10MB")`, `s3.parseSize("abc")`, `s3.parseSize({ dist: "uniform", min: 1, max: 2 })`} {
+		if _, err := rt.RunOnEventLoop(expr); err == nil {
+			t.Errorf("%s did not throw", expr)
+		}
+	}
+}

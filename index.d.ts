@@ -14,6 +14,28 @@ declare module "k6/x/s3" {
   export function runId(): string;
 
   /**
+   * Returns the number of bytes of a size such as `"10MiB"` or
+   * `"1.5GiB"`, in the same format as the sizes of the operations (see the
+   * Sizes section of README), but not a size distribution. It throws on an
+   * invalid size. Use it to compare sizes with the bytes of results, for
+   * example to stop writing at a total size per VU:
+   *
+   * ```js
+   * const limit = s3.parseSize("1GiB");
+   * let written = 0;
+   *
+   * export default function () {
+   *   if (written >= limit) {
+   *     return;
+   *   }
+   *   const res = client.putObject("bucket", `${s3.runId()}/${__VU}-${__ITER}`, "10MiB");
+   *   written += res.bytes;
+   * }
+   * ```
+   */
+  export function parseSize(size: string): number;
+
+  /**
    * A client of an S3-compatible server.
    *
    * Create clients in the init context. The configuration is validated there,
@@ -425,6 +447,6 @@ declare module "k6/x/s3" {
     | { dist: "lognormal"; median: number | string; sigma: number }
     | { dist: "choice"; values: { size: number | string; weight: number }[] };
 
-  const s3: { runId: typeof runId; Client: typeof Client };
+  const s3: { runId: typeof runId; parseSize: typeof parseSize; Client: typeof Client };
   export default s3;
 }

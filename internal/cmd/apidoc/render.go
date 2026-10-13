@@ -45,8 +45,8 @@ func render(a *API, name string) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// heading returns the Markdown heading of a method.
-func heading(m Method) string {
+// heading returns the Markdown heading of a method of recv.
+func heading(recv string, m Method) string {
 	names := make([]string, len(m.Params))
 	for i, p := range m.Params {
 		names[i] = p.Name
@@ -54,7 +54,7 @@ func heading(m Method) string {
 			names[i] += "?"
 		}
 	}
-	return fmt.Sprintf("`client.%s(%s)`", m.Name, strings.Join(names, ", "))
+	return fmt.Sprintf("`%s.%s(%s)`", recv, m.Name, strings.Join(names, ", "))
 }
 
 // signature returns the TypeScript signature of a method.

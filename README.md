@@ -142,6 +142,12 @@ The API reference and the TypeScript declarations ([index.d.ts](index.d.ts)) are
 - `{ dist: "lognormal", median, sigma }` (`sigma` of the underlying normal distribution, capped at 5TiB)
 - `{ dist: "choice", values: [{ size, weight }, ...] }`
 
+`s3.parseSize()` converts a size string to a number of bytes, for example to compare it with `bytes` of results:
+
+```js
+const limit = s3.parseSize("10GiB"); // 10737418240
+```
+
 ### `runId()`
 
 Returns the run ID, which is intended to be used as a key prefix such as `<runId>/<dataset>/<n>`. All VUs in a k6 process share the same run ID. It is available in the init context.
