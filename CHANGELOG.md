@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.2.3](https://github.com/fujiwara/xk6-s3/compare/v0.2.2...v0.2.3) - 2026-10-14
+
+- Document the handling of the OpenTelemetry environment variables by @fujiwara in https://github.com/fujiwara/xk6-s3/pull/22
+- Embed the release version in the xk6-s3 binary by @fujiwara in https://github.com/fujiwara/xk6-s3/pull/24
+
 ## [v0.2.2](https://github.com/fujiwara/xk6-s3/compare/v0.2.1...v0.2.2) - 2026-10-13
 
 - Add s3.parseSize() by @fujiwara in https://github.com/fujiwara/xk6-s3/pull/20
