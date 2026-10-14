@@ -14,6 +14,8 @@ builds:
       - CGO_ENABLED=0
     flags:
       - -trimpath
+    ldflags:
+      - -s -w -X main.version=v{{ .Version }}
     goos:
       - linux
       - darwin

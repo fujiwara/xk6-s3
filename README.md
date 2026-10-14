@@ -59,7 +59,7 @@ $ export AWS_ENDPOINT_URL_S3=http://localhost:7070 AWS_ACCESS_KEY_ID=... AWS_SEC
 $ VUS=32 DURATION=1m SIZE=1MiB OBJECTS=1000 xk6-s3 run examples/get.js
 ```
 
-`xk6-s3` works as `k6` with the `k6/x/s3` module. The examples create the bucket `xk6-s3` if missing and delete the objects they upload. To build k6 yourself, for example with other extensions, see [Build](#build).
+`xk6-s3` works as `k6` with the `k6/x/s3` module. `xk6-s3 version` shows the versions of k6 and xk6-s3. The examples create the bucket `xk6-s3` if missing and delete the objects they upload. To build k6 yourself, for example with other extensions, see [Build](#build).
 
 > [!WARNING]
 > This extension is under initial development. The JavaScript API may change until v1.0.
@@ -88,6 +88,8 @@ $ docker run --rm -u "$(id -u):$(id -g)" -v "${PWD}:/xk6" \
 $ make build                                # ./k6 built by xk6
 $ go -C cmd/xk6-s3 build -o ../../xk6-s3 .  # ./xk6-s3, the same as the released binary
 ```
+
+The version of the extension shown by `xk6-s3 version` is `(devel)` unless set with `-ldflags "-X main.version=<version>"`, as the releases do.
 
 ## Usage
 
@@ -291,7 +293,7 @@ k6 is licensed under the [GNU AGPL v3](https://github.com/grafana/k6/blob/master
 The `xk6-s3` binaries in [Releases](https://github.com/fujiwara/xk6-s3/releases) are k6 built with this extension ([cmd/xk6-s3](cmd/xk6-s3)), and are distributed under the GNU AGPL v3. Each release has `xk6-s3_v<version>_source.tar.gz`, the corresponding source including all dependencies (`cmd/xk6-s3/vendor`). To build the binary from it without network access:
 
 ```console
-$ go -C cmd/xk6-s3 build -mod=vendor .
+$ go -C cmd/xk6-s3 build -mod=vendor -ldflags "-X main.version=v<version>" .
 ```
 
 [CREDITS](CREDITS) lists the licenses and notices of the modules in the binary, and is included in the release archives.
