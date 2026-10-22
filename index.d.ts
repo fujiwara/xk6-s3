@@ -142,7 +142,9 @@ declare module "k6/x/s3" {
      * CompleteMultipartUpload. If any request fails, the upload is aborted.
      *
      * The whole upload is measured as put_multipart and each part as
-     * upload_part. The timeout applies to each request.
+     * upload_part. The bytes are counted in the s3_op_bytes metric only by
+     * upload_part, while the result has the bytes of the whole upload. The
+     * timeout applies to each request.
      */
     putObjectMultipart(bucket: string, key: string, size: Size, options?: PutObjectMultipartOptions): Result;
   }

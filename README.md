@@ -166,7 +166,7 @@ $ XK6_S3_RUN_ID=run-001 ./k6 run --tag test-id=run-001 script.js
 | --- | --- | --- |
 | `s3_op_duration` | Trend | Duration of an operation, including the body transfer |
 | `s3_op_ttfb` | Trend | Time to the response headers (GET only) |
-| `s3_op_bytes` | Counter | Body bytes sent (PUT) or received (GET) by successful operations |
+| `s3_op_bytes` | Counter | Body bytes sent (PUT) or received (GET) by successful operations. A multipart upload is counted by its parts (`upload_part`), not by `put_multipart` |
 | `s3_op_errors` | Rate | Failure rate of operations |
 | `s3_errors` | Counter | Errors, tagged with `error_kind`, `error_code` and `status` |
 

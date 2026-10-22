@@ -121,8 +121,8 @@ func TestPutObjectMultipart(t *testing.T) {
 	if total != 12<<20 {
 		t.Errorf("upload_part bytes = %v", total)
 	}
-	if s := find(samples, "s3_op_bytes", "put_multipart"); len(s) != 1 || s[0].Value != 12<<20 {
-		t.Errorf("put_multipart bytes = %v", s)
+	if s := find(samples, "s3_op_bytes", "put_multipart"); len(s) != 0 {
+		t.Errorf("put_multipart bytes = %v, want no samples", s)
 	}
 	if g := e.result(`client.getObject("bucket", "mp")`); g["bytes"] != int64(12<<20) {
 		t.Errorf("getObject = %v", g)
