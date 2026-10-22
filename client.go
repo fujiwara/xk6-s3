@@ -216,6 +216,9 @@ type op struct {
 	// noTimeout disables the per-operation timeout for operations that
 	// consist of multiple requests, which have their own timeouts.
 	noTimeout bool
+	// noBytesMetric omits the bytes from the metrics, for operations whose
+	// requests emit their own bytes.
+	noBytesMetric bool
 }
 
 // opOutput is what an operation function reports to measure.
@@ -266,7 +269,9 @@ func (c *Client) measure(env vuEnv, o op, fn func(ctx context.Context) (opOutput
 	if err == nil {
 		res.Status = responseStatus(out.metadata)
 		res.RequestID, _ = awsmiddleware.GetRequestIDMetadata(out.metadata)
-		mr.Bytes = out.bytes
+		if !o.noBytesMetric {
+			mr.Bytes = out.bytes
+		}
 	} else {
 		if res.ErrorKind == "" {
 			info := client.Classify(err)

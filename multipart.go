@@ -36,7 +36,9 @@ type PutObjectMultipartOptions struct {
 // CompleteMultipartUpload. If any request fails, the upload is aborted.
 //
 // The whole upload is measured as put_multipart and each part as
-// upload_part. The timeout applies to each request.
+// upload_part. The bytes are counted in the s3_op_bytes metric only by
+// upload_part, while the result has the bytes of the whole upload. The
+// timeout applies to each request.
 func (c *Client) PutObjectMultipart(bucket, key string, size Size, options sobek.Value) *Result {
 	rt := c.vu.Runtime()
 	requireName(rt, "bucket", bucket)
@@ -57,7 +59,7 @@ func (c *Client) PutObjectMultipart(bucket, key string, size Size, options sobek
 		size: n, partSize: partSize, parts: int(parts), concurrency: int(concurrency),
 		algorithm: c.multipartChecksumAlgorithm(),
 	}
-	return c.measure(env, op{name: metrics.OpPutMultipart, bucket: bucket, key: key, size: n, noTimeout: true}, u.run)
+	return c.measure(env, op{name: metrics.OpPutMultipart, bucket: bucket, key: key, size: n, noTimeout: true, noBytesMetric: true}, u.run)
 }
 
 // multipartChecksumAlgorithm returns the checksum algorithm for multipart
