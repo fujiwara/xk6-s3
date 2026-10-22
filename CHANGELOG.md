@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.2.4](https://github.com/fujiwara/xk6-s3/compare/v0.2.3...v0.2.4) - 2026-10-22
+
+- Count multipart upload bytes only by parts in s3_op_bytes by @fujiwara in https://github.com/fujiwara/xk6-s3/pull/25
+
 ## [v0.2.3](https://github.com/fujiwara/xk6-s3/compare/v0.2.2...v0.2.3) - 2026-10-14
 
 - Document the handling of the OpenTelemetry environment variables by @fujiwara in https://github.com/fujiwara/xk6-s3/pull/22
