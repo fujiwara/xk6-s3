@@ -11,8 +11,8 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.47.2
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.8
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.2
-	github.com/aws/smithy-go v1.28.5
-	github.com/aws/smithy-go/tracing/smithyoteltracing v1.0.33
+	github.com/aws/smithy-go v1.28.7
+	github.com/aws/smithy-go/tracing/smithyoteltracing v1.0.35
 	github.com/grafana/sobek v0.0.0-20260908083152-4698bc773ae7
 	github.com/johannesboyne/gofakes3 v1.2.0
 	github.com/sirupsen/logrus v1.10.2
